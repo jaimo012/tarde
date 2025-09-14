@@ -58,13 +58,7 @@ class DartScrapingSystem:
             
             if not should_run:
                 logger.info("⏸️ 시장이 휴장 중이므로 스크래핑을 건너뜁니다.")
-                
-                # 휴장일 알림 전송
-                self.slack_notifier.send_system_notification(
-                    f"⏸️ DART 스크래핑 건너뜀: {market_status}",
-                    "info"
-                )
-                
+                # 휴장일에는 슬랙 알림 전송하지 않음 (불필요한 스팸 방지)
                 return True  # 정상적인 스킵이므로 True 반환
             
             logger.info("✅ 시장 개장 중이므로 스크래핑을 진행합니다.")
@@ -85,25 +79,21 @@ class DartScrapingSystem:
             completion_message = f"🏁 모든 회사에 대한 분석 및 저장이 완료되었습니다. (신규 계약: {total_new_contracts}건)"
             logger.info(completion_message)
             
-            # 시스템 완료 알림 전송
+            # 신규 계약이 있을 때만 완료 알림 전송 (의미있는 정보만)
             if total_new_contracts > 0:
                 self.slack_notifier.send_system_notification(
-                    f"DART 스크래핑 완료: 총 {total_new_contracts}건의 신규 계약을 발견했습니다.",
+                    f"🎉 DART 스크래핑 완료: 총 {total_new_contracts}건의 신규 계약을 발견했습니다!",
                     "info"
                 )
-            else:
-                self.slack_notifier.send_system_notification(
-                    f"DART 스크래핑 완료: 신규 계약이 발견되지 않았습니다. ({market_status})",
-                    "info"
-                )
+            # 신규 계약이 없으면 슬랙 알림 전송하지 않음 (스팸 방지)
             
             return True
             
         except Exception as e:
             logger.error(f"시스템 실행 중 예상치 못한 오류 발생: {e}")
-            # 오류 발생 시 슬랙 알림
+            # 시스템 전체 오류만 슬랙 알림 (중요한 오류)
             self.slack_notifier.send_system_notification(
-                f"❌ 시스템 실행 중 오류 발생: {str(e)}",
+                f"🚨 시스템 전체 오류 발생: {str(e)}",
                 "error"
             )
             return False
@@ -164,11 +154,8 @@ class DartScrapingSystem:
                 
             except Exception as e:
                 logger.error(f"회사 '{corp_name}' 처리 중 오류 발생: {e}")
-                # 오류 발생 시 슬랙 알림
-                self.slack_notifier.send_system_notification(
-                    f"❌ 회사 '{corp_name}' 처리 중 오류 발생: {str(e)}",
-                    "error"
-                )
+                # 중요한 오류만 슬랙 알림 (개별 회사 오류는 로그만)
+                # 개별 회사 처리 오류는 시스템 전체에 영향을 주지 않으므로 슬랙 스팸 방지
                 continue
         
         return total_new_contracts
@@ -271,9 +258,9 @@ class DartScrapingSystem:
                     
                 else:
                     logger.error(f"   ❌ '{corp_name}': 계약 데이터 저장 실패")
-                    # 저장 실패 알림
+                    # 데이터 저장 실패는 중요한 오류이므로 슬랙 알림
                     self.slack_notifier.send_system_notification(
-                        f"❌ '{corp_name}': 계약 데이터 저장 실패",
+                        f"🚨 데이터 저장 실패: '{corp_name}' 계약 데이터를 저장할 수 없습니다",
                         "error"
                     )
             
@@ -291,9 +278,9 @@ class DartScrapingSystem:
                 
         except Exception as e:
             logger.error(f"'{corp_name}' 결과 저장 중 오류 발생: {e}")
-            # 저장 오류 알림
+            # 저장 오류는 중요하므로 슬랙 알림
             self.slack_notifier.send_system_notification(
-                f"❌ '{corp_name}' 결과 저장 중 오류: {str(e)}",
+                f"🚨 데이터 저장 오류: '{corp_name}' - {str(e)}",
                 "error"
             )
         
