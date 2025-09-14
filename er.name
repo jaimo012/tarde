@@ -1,5 +1,0 @@
-[33mf6a7f47[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m feat: 한투 KIS API를 키움증권 OpenAPI로 교체
-[33m140bcf4[m feat: 지능형 주식 분석 시스템 구현
-[33mcfd6b96[m feat: 시장 스케줄 기반 스크래핑 실행 기능 추가
-[33mfaf50de[m feat: 슬랙 웹훅 알림 기능 추가
-[33m173b8e5[m fix: 클라우드타입 빌드 오류 해결

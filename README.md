@@ -101,11 +101,15 @@ trade/
 ├── venv/                         # 가상환경
 ├── requirements.txt              # 패키지 의존성
 ├── .gitignore                    # Git 무시 파일
-├── run.py                        # 실행 스크립트
-├── test_market_schedule.py       # 시장 스케줄 테스트
+├── run.py                        # 로컬 실행 스크립트
+├── cloudtype_run.py              # 클라우드타입 실행 스크립트
+├── deploy.bat                    # Windows 배포 자동화 스크립트
+├── git_helper.py                 # Git 명령어 헬퍼 도구
+├── fix_git_config.py             # Git 설정 자동화 도구
 ├── CLOUDTYPE_ENV_SETUP.md        # 클라우드타입 배포 가이드
 ├── SLACK_SETUP_GUIDE.md          # 슬랙 웹훅 설정 가이드
 ├── KIWOOM_API_SETUP_GUIDE.md     # 키움증권 API 설정 가이드
+├── env-template.txt              # 환경변수 템플릿 파일
 └── README.md                     # 프로젝트 문서
 
 ```
@@ -228,9 +232,28 @@ trade/
    - 보고서 형식 변경 가능성
    - 패턴 매칭 로직 업데이트 필요
 
+4. **시간대 관련 문제**
+   - 클라우드타입 서버 시간이 UTC로 표시되는 경우: 자동으로 한국 시간대(KST)로 변환됨
+   - 시장 개장시간 오판: 시스템이 자동으로 한국 시간 기준으로 판단
+   - `fix_git_config.py` 실행으로 로컬 Git 설정 최적화
+
+5. **PowerShell 관련 문제**
+   - Git 명령어 멈춤 현상: `git config --global core.pager ""`로 해결
+   - 한글 파일명 문제: `git config --global core.quotepath false`로 해결
+   - 멀티라인 커밋 메시지 문제: `git_helper.py` 사용 권장
+
 ## 📋 개발 이력
 
-### v1.0.0 (2025-09-14)
+### v2.0.0 (2025-09-14) - 스마트 알림 시스템
+- ✨ **스마트 슬랙 알림 시스템**: 신규 계약 발견 시에만 알림 (스팸 방지)
+- 🕐 **시장 스케줄 기반 실행**: 한국 주식시장 개장일/시간 자동 감지
+- 📊 **지능형 주식 분석**: 키움증권 OpenAPI 연동 실시간 분석
+- 🌏 **한국 시간대 완벽 지원**: 클라우드타입 서버 시간대 자동 설정
+- 🔧 **PowerShell 호환성**: Windows 환경 Git 설정 자동화
+- 📈 **투자 점수 시스템**: 시장지수, 시가총액, 거래량 등 종합 분석
+- 🎯 **정확한 휴장일 감지**: 2024-2025년 공휴일 데이터베이스 내장
+
+### v1.0.0 (2025-09-14) - 기본 시스템
 - 초기 개발환경 구축
 - DART API 연동 구현
 - 구글 스프레드시트 연동 구현
