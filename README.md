@@ -51,8 +51,8 @@ pip install requests pandas numpy python-dateutil python-dotenv loguru fastapi u
    ENVIRONMENT=development
    LOG_LEVEL=DEBUG
    SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
-   KIS_APP_KEY=your_kis_app_key
-   KIS_APP_SECRET=your_kis_app_secret
+   KIWOOM_APP_KEY=your_kiwoom_app_key
+   KIWOOM_APP_SECRET=your_kiwoom_app_secret
    ```
 
 #### 클라우드타입 배포환경
@@ -67,8 +67,8 @@ pip install requests pandas numpy python-dateutil python-dotenv loguru fastapi u
 
 선택사항 환경변수:
 - `SLACK_WEBHOOK`: 슬랙 웹훅 URL (신규 계약 알림용)
-- `KIS_APP_KEY`: 한국투자증권 KIS API 앱키 (주식 분석용)
-- `KIS_APP_SECRET`: 한국투자증권 KIS API 앱시크릿 (주식 분석용)
+- `KIWOOM_APP_KEY`: 키움증권 OpenAPI 앱키 (주식 분석용)
+- `KIWOOM_APP_SECRET`: 키움증권 OpenAPI 앱시크릿 (주식 분석용)
 
 ### 3. 실행
 
@@ -105,7 +105,7 @@ trade/
 ├── test_market_schedule.py       # 시장 스케줄 테스트
 ├── CLOUDTYPE_ENV_SETUP.md        # 클라우드타입 배포 가이드
 ├── SLACK_SETUP_GUIDE.md          # 슬랙 웹훅 설정 가이드
-├── KIS_API_SETUP_GUIDE.md        # KIS API 설정 가이드
+├── KIWOOM_API_SETUP_GUIDE.md     # 키움증권 API 설정 가이드
 └── README.md                     # 프로젝트 문서
 
 ```
@@ -144,7 +144,7 @@ trade/
 - 2024-2025년 공휴일 데이터베이스 내장
 
 ### 2. 📊 지능형 주식 분석 시스템
-- **실시간 주식 데이터 분석** (한국투자증권 KIS API 연동)
+- **실시간 주식 데이터 분석** (키움증권 OpenAPI 연동)
 - **시장지수 vs 200일 이동평균** 비교 분석
 - **시가총액 범위 체크** (500억~5,000억 적정 구간)
 - **매출 대비 계약금액 비율** 분석 (20% 기준)

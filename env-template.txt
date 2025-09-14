@@ -18,6 +18,6 @@ LOG_LEVEL=DEBUG
 # 슬랙 웹훅 URL (선택사항 - 신규 계약 알림용)
 SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 
-# 한국투자증권 KIS API (선택사항 - 주식 분석용)
-KIS_APP_KEY=your_kis_app_key
-KIS_APP_SECRET=your_kis_app_secret
+# 키움증권 OpenAPI (선택사항 - 주식 분석용)
+KIWOOM_APP_KEY=your_kiwoom_app_key
+KIWOOM_APP_SECRET=your_kiwoom_app_secret

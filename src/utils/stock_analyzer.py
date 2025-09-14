@@ -1,7 +1,7 @@
 """
 주식 시장 데이터 분석 모듈
 
-이 모듈은 한국투자증권 KIS API를 사용하여 주식 데이터를 수집하고
+이 모듈은 키움증권 OpenAPI를 사용하여 주식 데이터를 수집하고
 계약 정보와 함께 종목 분석을 수행합니다.
 """
 
@@ -41,18 +41,18 @@ class StockAnalysisResult:
     recommendation_score: int  # 0-10점
 
 
-class KISStockDataClient:
-    """한국투자증권 KIS API 클라이언트"""
+class KiwoomStockDataClient:
+    """키움증권 OpenAPI 클라이언트"""
     
-    BASE_URL = "https://openapi.koreainvestment.com:9443"
+    BASE_URL = "https://openapi.kiwoom.com:9443"
     
     def __init__(self, app_key: str = None, app_secret: str = None):
         """
-        KIS API 클라이언트를 초기화합니다.
+        키움증권 API 클라이언트를 초기화합니다.
         
         Args:
-            app_key (str): KIS API 앱키
-            app_secret (str): KIS API 앱시크릿
+            app_key (str): 키움증권 API 앱키
+            app_secret (str): 키움증권 API 앱시크릿
         """
         self.app_key = app_key
         self.app_secret = app_secret
@@ -62,7 +62,7 @@ class KISStockDataClient:
         if app_key and app_secret:
             self._get_access_token()
         else:
-            logger.warning("KIS API 키가 설정되지 않아 Mock 데이터를 사용합니다.")
+            logger.warning("키움증권 API 키가 설정되지 않아 Mock 데이터를 사용합니다.")
     
     def _get_access_token(self) -> bool:
         """액세스 토큰을 발급받습니다."""
@@ -83,14 +83,14 @@ class KISStockDataClient:
                 expires_in = result.get("expires_in", 86400)  # 기본 24시간
                 self.token_expires_at = datetime.now() + timedelta(seconds=expires_in - 300)  # 5분 여유
                 
-                logger.info("KIS API 액세스 토큰 발급 성공")
+                logger.info("키움증권 API 액세스 토큰 발급 성공")
                 return True
             else:
-                logger.error(f"KIS API 토큰 발급 실패: {response.status_code}")
+                logger.error(f"키움증권 API 토큰 발급 실패: {response.status_code}")
                 return False
                 
         except Exception as e:
-            logger.error(f"KIS API 토큰 발급 중 오류: {e}")
+            logger.error(f"키움증권 API 토큰 발급 중 오류: {e}")
             return False
     
     def _ensure_valid_token(self) -> bool:
@@ -109,13 +109,14 @@ class KISStockDataClient:
             return self._get_mock_stock_price(stock_code)
         
         try:
+            # 키움증권 주식 현재가 조회 API
             url = f"{self.BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-price"
             headers = {
                 "Content-Type": "application/json",
                 "authorization": f"Bearer {self.access_token}",
                 "appkey": self.app_key,
                 "appsecret": self.app_secret,
-                "tr_id": "FHKST01010100"
+                "tr_id": "FHKST01010100"  # 키움증권 현재가 조회 TR
             }
             params = {
                 "fid_cond_mrkt_div_code": "J",
@@ -140,7 +141,7 @@ class KISStockDataClient:
             return self._get_mock_market_index(market_type)
         
         try:
-            # KOSPI: 0001, KOSDAQ: 1001
+            # 키움증권 지수 코드: KOSPI: 0001, KOSDAQ: 1001
             index_code = "0001" if market_type == "KOSPI" else "1001"
             
             url = f"{self.BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-index-price"
@@ -149,7 +150,7 @@ class KISStockDataClient:
                 "authorization": f"Bearer {self.access_token}",
                 "appkey": self.app_key,
                 "appsecret": self.app_secret,
-                "tr_id": "FHKUP03500100"
+                "tr_id": "FHKUP03500100"  # 키움증권 지수 조회 TR
             }
             params = {
                 "fid_cond_mrkt_div_code": "U",
@@ -215,15 +216,15 @@ class KISStockDataClient:
 class StockAnalyzer:
     """주식 분석 메인 클래스"""
     
-    def __init__(self, kis_app_key: str = None, kis_app_secret: str = None):
+    def __init__(self, kiwoom_app_key: str = None, kiwoom_app_secret: str = None):
         """
         주식 분석기를 초기화합니다.
         
         Args:
-            kis_app_key (str): KIS API 앱키
-            kis_app_secret (str): KIS API 앱시크릿
+            kiwoom_app_key (str): 키움증권 API 앱키
+            kiwoom_app_secret (str): 키움증권 API 앱시크릿
         """
-        self.kis_client = KISStockDataClient(kis_app_key, kis_app_secret)
+        self.kiwoom_client = KiwoomStockDataClient(kiwoom_app_key, kiwoom_app_secret)
         
         # Mock 데이터 (실제 API 연동 전까지 사용)
         self.mock_ma200_data = {
@@ -254,14 +255,14 @@ class StockAnalyzer:
         
         try:
             # 1. 주식 가격 정보 조회
-            stock_data = self.kis_client.get_stock_price(stock_code)
+            stock_data = self.kiwoom_client.get_stock_price(stock_code)
             if not stock_data:
                 return self._create_error_result(stock_code, stock_name, "주식 데이터 조회 실패")
             
             current_price = int(stock_data['output']['stck_prpr'])
             
             # 2. 시장 지수 정보 조회
-            index_data = self.kis_client.get_market_index(market_type)
+            index_data = self.kiwoom_client.get_market_index(market_type)
             if not index_data:
                 return self._create_error_result(stock_code, stock_name, "시장 지수 조회 실패")
             

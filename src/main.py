@@ -8,7 +8,7 @@ import time
 from typing import List, Dict
 from loguru import logger
 
-from config.settings import LOGGING_CONFIG, REQUIRED_FIELDS, SLACK_WEBHOOK_URL, KIS_APP_KEY, KIS_APP_SECRET
+from config.settings import LOGGING_CONFIG, REQUIRED_FIELDS, SLACK_WEBHOOK_URL, KIWOOM_APP_KEY, KIWOOM_APP_SECRET
 from src.dart_api.client import DartApiClient
 from src.dart_api.analyzer import ReportAnalyzer
 from src.google_sheets.client import GoogleSheetsClient
@@ -24,7 +24,7 @@ class DartScrapingSystem:
         self.dart_client = DartApiClient()
         self.analyzer = ReportAnalyzer()
         self.sheets_client = GoogleSheetsClient()
-        self.slack_notifier = SlackNotifier(SLACK_WEBHOOK_URL, KIS_APP_KEY, KIS_APP_SECRET)
+        self.slack_notifier = SlackNotifier(SLACK_WEBHOOK_URL, KIWOOM_APP_KEY, KIWOOM_APP_SECRET)
         
         # 로깅 설정
         self._setup_logging()

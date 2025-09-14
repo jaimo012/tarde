@@ -43,9 +43,9 @@ if not IS_CLOUDTYPE:
     # 슬랙 웹훅 설정 (선택사항)
     SLACK_WEBHOOK_URL = os.getenv('SLACK_WEBHOOK')
     
-    # KIS API 설정 (주식 분석용, 선택사항)
-    KIS_APP_KEY = os.getenv('KIS_APP_KEY')
-    KIS_APP_SECRET = os.getenv('KIS_APP_SECRET')
+    # 키움증권 API 설정 (주식 분석용, 선택사항)
+    KIWOOM_APP_KEY = os.getenv('KIWOOM_APP_KEY')
+    KIWOOM_APP_SECRET = os.getenv('KIWOOM_APP_SECRET')
 
     # 시트 이름 설정
     SHEET_NAMES = {
