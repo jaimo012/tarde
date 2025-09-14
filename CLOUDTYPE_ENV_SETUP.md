@@ -72,6 +72,16 @@ base64 -i /path/to/service-account.json
 - **가능한 값**: `DEBUG`, `INFO`, `WARNING`, `ERROR`
 - **기본값**: `INFO`
 
+### 7. **SLACK_WEBHOOK** (선택사항)
+```
+변수명: SLACK_WEBHOOK
+설명: 슬랙 웹훅 URL (신규 계약 알림용)
+값: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+```
+- **설명**: 신규 계약이 발견되면 슬랙으로 알림을 전송합니다
+- **획득 방법**: 슬랙 워크스페이스에서 Incoming Webhook 앱 설치 후 URL 생성
+- **선택사항**: 설정하지 않으면 알림 기능이 비활성화됩니다
+
 ---
 
 ## 🛠️ 클라우드타입 배포 설정
@@ -146,6 +156,7 @@ SPREADSHEET_URL = https://docs.google.com/spreadsheets/d/1FOreBqJdIfshsbTumxybVz
 ENVIRONMENT = production
 PORT = 8080
 LOG_LEVEL = INFO
+SLACK_WEBHOOK = https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 ```
 
 ---

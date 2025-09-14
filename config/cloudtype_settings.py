@@ -50,6 +50,9 @@ if not SPREADSHEET_URL:
 
 GOOGLE_SERVICE_ACCOUNT_INFO = get_google_service_account_info()
 
+# 슬랙 웹훅 설정 (선택사항)
+SLACK_WEBHOOK_URL = os.getenv('SLACK_WEBHOOK')
+
 # 시트 이름 설정
 SHEET_NAMES = {
     'CONTRACT': "계약",

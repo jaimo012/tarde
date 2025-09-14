@@ -40,6 +40,9 @@ if not IS_CLOUDTYPE:
     if not SERVICE_ACCOUNT_FILE:
         raise ValueError("SERVICE_ACCOUNT_FILE 환경변수가 설정되지 않았습니다.")
 
+    # 슬랙 웹훅 설정 (선택사항)
+    SLACK_WEBHOOK_URL = os.getenv('SLACK_WEBHOOK')
+
     # 시트 이름 설정
     SHEET_NAMES = {
         'CONTRACT': "계약",

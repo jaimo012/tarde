@@ -8,10 +8,11 @@ import time
 from typing import List, Dict
 from loguru import logger
 
-from config.settings import LOGGING_CONFIG, REQUIRED_FIELDS
+from config.settings import LOGGING_CONFIG, REQUIRED_FIELDS, SLACK_WEBHOOK_URL
 from src.dart_api.client import DartApiClient
 from src.dart_api.analyzer import ReportAnalyzer
 from src.google_sheets.client import GoogleSheetsClient
+from src.utils.slack_notifier import SlackNotifier
 
 
 class DartScrapingSystem:
@@ -22,6 +23,7 @@ class DartScrapingSystem:
         self.dart_client = DartApiClient()
         self.analyzer = ReportAnalyzer()
         self.sheets_client = GoogleSheetsClient()
+        self.slack_notifier = SlackNotifier(SLACK_WEBHOOK_URL)
         
         # 로깅 설정
         self._setup_logging()
@@ -59,9 +61,19 @@ class DartScrapingSystem:
                 return False
             
             # 3단계: 각 회사별 공시 처리
-            self._process_companies(company_list, existing_reports)
+            total_new_contracts = self._process_companies(company_list, existing_reports)
             
-            logger.info("🏁 모든 회사에 대한 분석 및 저장이 완료되었습니다.")
+            # 4단계: 완료 알림
+            completion_message = f"🏁 모든 회사에 대한 분석 및 저장이 완료되었습니다. (신규 계약: {total_new_contracts}건)"
+            logger.info(completion_message)
+            
+            # 시스템 완료 알림 전송
+            if total_new_contracts > 0:
+                self.slack_notifier.send_system_notification(
+                    f"DART 스크래핑 완료: 총 {total_new_contracts}건의 신규 계약을 발견했습니다.",
+                    "info"
+                )
+            
             return True
             
         except Exception as e:
@@ -101,9 +113,10 @@ class DartScrapingSystem:
             logger.error(f"❌ 기존 데이터 로드 실패: {e}")
             return set(), None
     
-    def _process_companies(self, company_list, existing_reports: set):
+    def _process_companies(self, company_list, existing_reports: set) -> int:
         """각 회사별로 공시를 처리합니다."""
         total_companies = len(company_list)
+        total_new_contracts = 0
         
         for index, company_row in company_list.iterrows():
             corp_code = company_row['조회코드']
@@ -117,12 +130,20 @@ class DartScrapingSystem:
                     company_row, existing_reports
                 )
                 
-                # 결과 저장
-                self._save_company_results(corp_name, new_contracts, new_excluded)
+                # 결과 저장 및 슬랙 알림
+                saved_contracts = self._save_company_results(corp_name, new_contracts, new_excluded)
+                total_new_contracts += saved_contracts
                 
             except Exception as e:
                 logger.error(f"회사 '{corp_name}' 처리 중 오류 발생: {e}")
+                # 오류 발생 시 슬랙 알림
+                self.slack_notifier.send_system_notification(
+                    f"❌ 회사 '{corp_name}' 처리 중 오류 발생: {str(e)}",
+                    "error"
+                )
                 continue
+        
+        return total_new_contracts
     
     def _process_company_disclosures(self, company_row, existing_reports: set) -> tuple:
         """특정 회사의 공시를 처리합니다."""
@@ -205,16 +226,28 @@ class DartScrapingSystem:
             logger.error(f"   - 공시({rcept_no}) 분석 중 오류 발생: {e}")
             return None
     
-    def _save_company_results(self, corp_name: str, new_contracts: List, new_excluded: List):
-        """회사별 처리 결과를 저장합니다."""
+    def _save_company_results(self, corp_name: str, new_contracts: List, new_excluded: List) -> int:
+        """회사별 처리 결과를 저장하고 슬랙 알림을 전송합니다."""
+        saved_contracts_count = 0
+        
         try:
             # 계약 데이터 저장
             if new_contracts:
                 success = self.sheets_client.save_contract_data(new_contracts)
                 if success:
+                    saved_contracts_count = len(new_contracts)
                     logger.info(f"   ✅ '{corp_name}': {len(new_contracts)}개 계약 데이터 저장 완료")
+                    
+                    # 슬랙 알림 전송
+                    self.slack_notifier.send_new_contract_notification(new_contracts)
+                    
                 else:
                     logger.error(f"   ❌ '{corp_name}': 계약 데이터 저장 실패")
+                    # 저장 실패 알림
+                    self.slack_notifier.send_system_notification(
+                        f"❌ '{corp_name}': 계약 데이터 저장 실패",
+                        "error"
+                    )
             
             # 분석 제외 데이터 저장
             if new_excluded:
@@ -230,6 +263,13 @@ class DartScrapingSystem:
                 
         except Exception as e:
             logger.error(f"'{corp_name}' 결과 저장 중 오류 발생: {e}")
+            # 저장 오류 알림
+            self.slack_notifier.send_system_notification(
+                f"❌ '{corp_name}' 결과 저장 중 오류: {str(e)}",
+                "error"
+            )
+        
+        return saved_contracts_count
 
 
 def main():
