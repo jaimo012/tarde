@@ -13,6 +13,7 @@ from src.dart_api.client import DartApiClient
 from src.dart_api.analyzer import ReportAnalyzer
 from src.google_sheets.client import GoogleSheetsClient
 from src.utils.slack_notifier import SlackNotifier
+from src.utils.market_schedule import should_run_dart_scraping, get_market_status
 
 
 class DartScrapingSystem:
@@ -51,6 +52,23 @@ class DartScrapingSystem:
         logger.info("🚀 DART 공시 스크래핑 및 구글 시트 저장 자동화를 시작합니다.")
         
         try:
+            # 0단계: 시장 개장 여부 확인
+            should_run, market_status = should_run_dart_scraping()
+            logger.info(f"📊 시장 상태: {market_status}")
+            
+            if not should_run:
+                logger.info("⏸️ 시장이 휴장 중이므로 스크래핑을 건너뜁니다.")
+                
+                # 휴장일 알림 전송
+                self.slack_notifier.send_system_notification(
+                    f"⏸️ DART 스크래핑 건너뜀: {market_status}",
+                    "info"
+                )
+                
+                return True  # 정상적인 스킵이므로 True 반환
+            
+            logger.info("✅ 시장 개장 중이므로 스크래핑을 진행합니다.")
+            
             # 1단계: 구글 스프레드시트 연결
             if not self._connect_to_sheets():
                 return False
@@ -73,11 +91,21 @@ class DartScrapingSystem:
                     f"DART 스크래핑 완료: 총 {total_new_contracts}건의 신규 계약을 발견했습니다.",
                     "info"
                 )
+            else:
+                self.slack_notifier.send_system_notification(
+                    f"DART 스크래핑 완료: 신규 계약이 발견되지 않았습니다. ({market_status})",
+                    "info"
+                )
             
             return True
             
         except Exception as e:
             logger.error(f"시스템 실행 중 예상치 못한 오류 발생: {e}")
+            # 오류 발생 시 슬랙 알림
+            self.slack_notifier.send_system_notification(
+                f"❌ 시스템 실행 중 오류 발생: {str(e)}",
+                "error"
+            )
             return False
     
     def _connect_to_sheets(self) -> bool:

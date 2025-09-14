@@ -14,3 +14,6 @@ ENVIRONMENT=development
 
 # 로그 레벨 (DEBUG, INFO, WARNING, ERROR)
 LOG_LEVEL=DEBUG
+
+# 슬랙 웹훅 URL (선택사항 - 신규 계약 알림용)
+SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK/URL

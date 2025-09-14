@@ -50,6 +50,7 @@ pip install requests pandas numpy python-dateutil python-dotenv loguru fastapi u
    SERVICE_ACCOUNT_FILE=config/your_service_account.json
    ENVIRONMENT=development
    LOG_LEVEL=DEBUG
+   SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
    ```
 
 #### 클라우드타입 배포환경
@@ -61,6 +62,9 @@ pip install requests pandas numpy python-dateutil python-dotenv loguru fastapi u
 - `SPREADSHEET_URL`: 구글 스프레드시트 URL
 - `ENVIRONMENT`: production
 - `PORT`: 8080
+
+선택사항 환경변수:
+- `SLACK_WEBHOOK`: 슬랙 웹훅 URL (신규 계약 알림용)
 
 ### 3. 실행
 
@@ -79,6 +83,8 @@ trade/
 │   ├── google_sheets/            # 구글 시트 연동 모듈
 │   │   └── client.py             # 스프레드시트 클라이언트
 │   ├── utils/                    # 유틸리티 함수
+│   │   ├── slack_notifier.py     # 슬랙 알림 모듈
+│   │   └── market_schedule.py    # 시장 스케줄 관리
 │   └── main.py                   # 메인 실행 로직
 ├── config/                       # 설정 파일
 │   └── settings.py               # 시스템 설정
@@ -91,6 +97,9 @@ trade/
 ├── requirements.txt              # 패키지 의존성
 ├── .gitignore                    # Git 무시 파일
 ├── run.py                        # 실행 스크립트
+├── test_market_schedule.py       # 시장 스케줄 테스트
+├── CLOUDTYPE_ENV_SETUP.md        # 클라우드타입 배포 가이드
+├── SLACK_SETUP_GUIDE.md          # 슬랙 웹훅 설정 가이드
 └── README.md                     # 프로젝트 문서
 
 ```
@@ -120,16 +129,49 @@ trade/
 
 이 중 하나라도 누락되면 '분석제외' 시트에 저장됩니다.
 
+## 🚀 주요 기능
+
+### 1. 🕐 시장 스케줄 기반 실행
+- **한국 주식시장 개장일/시간 자동 감지**
+- **주말, 공휴일, 휴장일 자동 스킵**
+- **개장시간(08:30~15:30)에만 스크래핑 실행**
+- 2024-2025년 공휴일 데이터베이스 내장
+
+### 2. 📢 슬랙 알림 시스템
+- **신규 계약 발견 시 실시간 알림**
+- 계약 정보 구조화된 메시지로 전송
+- 계약금액 읽기 쉬운 형태 포맷팅 (억원, 만원 단위)
+- **시장 휴장일 알림**
+- **시스템 오류 및 완료 상태 알림**
+
+### 3. 🔍 DART API 연동
+- 한국 공시시스템(DART)에서 "단일판매ㆍ공급계약체결" 공시 자동 검색
+- 실시간 공시 데이터 수집 및 분석
+
+### 4. 📊 구글 스프레드시트 연동
+- 종목 리스트 자동 로드 ("분석대상" TRUE인 항목만)
+- 신규 계약 정보 자동 저장
+- 중복 데이터 자동 제거
+
+### 5. 🧠 지능형 데이터 분석
+- HTML/XML 보고서 자동 파싱
+- 계약 정보 추출 (계약일자, 금액, 기간 등)
+- 완전성 검증 후 분류 저장
+
 ## 📊 작업 흐름
 
-1. **초기화**: 구글 스프레드시트 연결 및 기존 데이터 로드
-2. **회사 목록 가져오기**: '종목코드' 시트에서 분석대상이 TRUE인 회사들 조회
-3. **공시 검색**: 각 회사별로 DART API를 통해 단일판매공급계약 공시 검색
-4. **중복 확인**: 이미 처리된 공시는 건너뛰기
-5. **보고서 다운로드**: 새로운 공시의 원본 파일(ZIP) 다운로드
-6. **내용 분석**: HTML/XML 파싱을 통한 계약 정보 추출
-7. **데이터 분류**: 완전성 검증 후 적절한 시트에 저장
-8. **로그 기록**: 전체 과정의 상세한 로그 생성
+1. **📊 시장 상태 확인**: 한국 주식시장 개장 여부 체크
+2. **⏸️ 휴장일 처리**: 시장 휴장 시 스크래핑 건너뜀 + 슬랙 알림
+3. **✅ 개장일 스크래핑**:
+   - 구글 스프레드시트 연결 및 기존 데이터 로드
+   - '종목코드' 시트에서 분석대상이 TRUE인 회사들 조회
+   - 각 회사별로 DART API를 통해 단일판매공급계약 공시 검색
+   - 이미 처리된 공시는 건너뛰기 (중복 확인)
+   - 새로운 공시의 원본 파일(ZIP) 다운로드
+   - HTML/XML 파싱을 통한 계약 정보 추출
+   - 완전성 검증 후 적절한 시트에 저장
+4. **📢 실시간 알림**: 신규 계약 발견 시 슬랙 알림 전송
+5. **📝 로그 기록**: 전체 과정의 상세한 로그 생성
 
 ## 🛠️ 개발 가이드
 
