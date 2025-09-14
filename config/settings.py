@@ -1,0 +1,62 @@
+"""
+DART API 및 구글 스프레드시트 연동을 위한 설정 파일
+
+이 파일에는 API 키, 스프레드시트 URL 등 중요한 설정값들이 포함되어 있습니다.
+실제 운영 시에는 환경변수나 별도의 설정 파일을 통해 관리하는 것을 권장합니다.
+"""
+
+import os
+from dotenv import load_dotenv
+
+# 환경변수 로드
+load_dotenv()
+
+# DART API 설정
+DART_API_KEY = os.getenv('DART_API_KEY', '95aa8b9247edaaf3fd89be2f0f063c8cdf9893cc')
+
+# 구글 스프레드시트 설정
+SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1FOreBqJdIfshsbTumxybVzfDOz9dvQGDZTLcQNIy6Q4/edit?usp=sharing"
+SERVICE_ACCOUNT_FILE = os.getenv('SERVICE_ACCOUNT_FILE', 'config/life-coordinator-a8de30e91786.json')
+
+# 시트 이름 설정
+SHEET_NAMES = {
+    'CONTRACT': "계약",
+    'EXCLUDED': "분석제외", 
+    'COMPANY_LIST': "종목코드"
+}
+
+# 시트 컬럼 정의
+SHEET_COLUMNS = [
+    '종목코드', '조회코드', '종목명', '시장구분', '상장일자', '업종코드', '업종명', '결산월', '지정자문인',
+    '상장주식수', '액면가', '자본금', '대표이사', '대표전화', '주소', '접수일자', '보고서명',
+    '접수번호', '보고서링크', '계약(수주)일자', '계약상대방', '판매ㆍ공급계약 내용', '시작일',
+    '종료일', '계약금액', '최근 매출액', '매출액 대비 비율'
+]
+
+# DART API 설정
+DART_API_CONFIG = {
+    'base_url': 'https://opendart.fss.or.kr/api',
+    'list_endpoint': '/list.json',
+    'document_endpoint': '/document.xml',
+    'search_start_date': '20200101',
+    'page_size': 100,
+    'request_delay': 0.1  # API 요청 간 대기시간 (초)
+}
+
+# 로깅 설정
+LOGGING_CONFIG = {
+    'level': 'INFO',
+    'format': '{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}',
+    'file_path': 'logs/dart_scraper.log',
+    'rotation': '1 day',
+    'retention': '30 days'
+}
+
+# 필수 데이터 필드 정의 (이 필드들이 모두 채워져야 '계약' 시트에 저장됨)
+REQUIRED_FIELDS = ['계약(수주)일자', '시작일', '종료일', '계약금액']
+
+# 보고서 검색 키워드 설정
+REPORT_SEARCH_CONFIG = {
+    'include_keywords': ['단일판매'],
+    'exclude_keywords': ['정정', '해지', '정지']
+}

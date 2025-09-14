@@ -1,0 +1,231 @@
+"""
+DART 보고서 분석 모듈
+
+이 모듈은 다운로드한 보고서에서 계약 관련 정보를 추출하는 기능을 제공합니다.
+"""
+
+import re
+from typing import Dict, List, Optional
+from bs4 import BeautifulSoup
+from loguru import logger
+
+from config.settings import REQUIRED_FIELDS
+
+
+class ReportAnalyzer:
+    """보고서 내용을 분석하여 필요한 데이터를 추출하는 클래스"""
+    
+    def __init__(self):
+        """보고서 분석기를 초기화합니다."""
+        self.header_patterns = {
+            '판매ㆍ공급계약 내용': [
+                r'1\.\s*판매ㆍ공급계약\s*내용',
+                r'-\s*체결계약명',
+                r'계약\s*내용'
+            ],
+            '계약상대방': [
+                r'3\.\s*계약상대방',
+                r'3\.\s*계약상대',
+                r'계약\s*상대방'
+            ],
+            '계약(수주)일자': [
+                r'8\.\s*계약\(수주\)일자',
+                r'7\.\s*계약\(수주\)일자',
+                r'계약\s*일자',
+                r'수주\s*일자'
+            ],
+            '시작일': [
+                r'시작일',
+                r'계약\s*시작일',
+                r'공급\s*시작일'
+            ],
+            '종료일': [
+                r'종료일',
+                r'계약\s*종료일',
+                r'공급\s*종료일'
+            ],
+            '계약금액': [
+                r'확정\s*계약금액',
+                r'계약금액\s*총액\(원\)',
+                r'계약금액\(원\)',
+                r'계약\s*금액'
+            ],
+            '최근 매출액': [
+                r'최근\s*매출액\(원\)',
+                r'최근매출액\(원\)',
+                r'최근\s*매출액'
+            ],
+            '매출액 대비 비율': [
+                r'매출액\s*대비\(%\)',
+                r'매출액대비\(%\)',
+                r'매출액\s*대비\s*비율'
+            ]
+        }
+        
+        logger.info("보고서 분석기가 초기화되었습니다.")
+    
+    def analyze_report(self, html_content: str) -> Dict[str, Optional[str]]:
+        """
+        보고서 HTML 내용을 분석하여 계약 정보를 추출합니다.
+        
+        Args:
+            html_content (str): 보고서 HTML 내용
+            
+        Returns:
+            Dict[str, Optional[str]]: 추출된 계약 정보
+        """
+        if not html_content:
+            logger.warning("분석할 보고서 내용이 없습니다.")
+            return {}
+        
+        try:
+            # BeautifulSoup으로 HTML 파싱
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # 각 필드별로 데이터 추출
+            extracted_data = {}
+            for field_name, patterns in self.header_patterns.items():
+                value = self._find_value_with_fallbacks(soup, patterns)
+                extracted_data[field_name] = value
+                
+                if value:
+                    logger.debug(f"'{field_name}' 추출 성공: {value[:50]}...")
+                else:
+                    logger.debug(f"'{field_name}' 추출 실패")
+            
+            return extracted_data
+            
+        except Exception as e:
+            logger.error(f"보고서 분석 중 오류 발생: {e}")
+            return {}
+    
+    def _find_value_with_fallbacks(self, soup: BeautifulSoup, patterns: List[str]) -> Optional[str]:
+        """
+        여러 패턴을 시도하여 가장 먼저 찾아지는 유효한 값을 반환합니다.
+        
+        Args:
+            soup (BeautifulSoup): 파싱된 HTML 객체
+            patterns (List[str]): 검색할 패턴 목록
+            
+        Returns:
+            Optional[str]: 찾은 값 (없으면 None)
+        """
+        for pattern in patterns:
+            value = self._find_value_by_header(soup, pattern)
+            if value and value.strip() != '-' and value.strip() != '':
+                return value.strip()
+        return None
+    
+    def _find_value_by_header(self, soup: BeautifulSoup, header_pattern: str) -> Optional[str]:
+        """
+        특정 헤더 패턴을 찾아 그 옆 셀의 값을 반환합니다.
+        
+        Args:
+            soup (BeautifulSoup): 파싱된 HTML 객체
+            header_pattern (str): 검색할 헤더 패턴 (정규식)
+            
+        Returns:
+            Optional[str]: 찾은 값 (없으면 None)
+        """
+        try:
+            # 정규식 패턴으로 헤더 찾기
+            pattern = re.compile(header_pattern, re.IGNORECASE)
+            
+            # span 또는 td 태그에서 패턴 매칭
+            header_tag = soup.find(['span', 'td', 'p', 'div'], string=pattern)
+            
+            if not header_tag:
+                # 텍스트가 정확히 매칭되지 않는 경우, 부분 매칭 시도
+                all_tags = soup.find_all(['span', 'td', 'p', 'div'])
+                for tag in all_tags:
+                    if tag.get_text() and pattern.search(tag.get_text()):
+                        header_tag = tag
+                        break
+            
+            if not header_tag:
+                return None
+            
+            # 헤더 태그의 부모 td에서 다음 형제 td 찾기
+            parent_td = header_tag.find_parent('td')
+            if parent_td:
+                next_td = parent_td.find_next_sibling('td')
+                if next_td:
+                    return next_td.get_text(strip=True)
+            
+            # 테이블 구조가 다른 경우, 다른 방법으로 시도
+            # 같은 행(tr)에서 다음 셀 찾기
+            parent_tr = header_tag.find_parent('tr')
+            if parent_tr:
+                all_tds = parent_tr.find_all('td')
+                for i, td in enumerate(all_tds):
+                    if pattern.search(td.get_text()):
+                        # 다음 td가 있으면 그 값을 반환
+                        if i + 1 < len(all_tds):
+                            return all_tds[i + 1].get_text(strip=True)
+            
+            return None
+            
+        except Exception as e:
+            logger.debug(f"헤더 패턴 '{header_pattern}' 검색 중 오류: {e}")
+            return None
+    
+    def validate_extracted_data(self, data: Dict[str, Optional[str]]) -> bool:
+        """
+        추출된 데이터가 완전한지 검증합니다.
+        
+        Args:
+            data (Dict[str, Optional[str]]): 추출된 데이터
+            
+        Returns:
+            bool: 데이터가 완전하면 True, 불완전하면 False
+        """
+        missing_fields = []
+        
+        for field in REQUIRED_FIELDS:
+            if not data.get(field) or data[field].strip() == '':
+                missing_fields.append(field)
+        
+        if missing_fields:
+            logger.info(f"필수 필드 누락: {', '.join(missing_fields)}")
+            return False
+        else:
+            logger.info("모든 필수 필드가 추출되었습니다.")
+            return True
+    
+    def clean_extracted_data(self, data: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
+        """
+        추출된 데이터를 정제합니다.
+        
+        Args:
+            data (Dict[str, Optional[str]]): 원본 데이터
+            
+        Returns:
+            Dict[str, Optional[str]]: 정제된 데이터
+        """
+        cleaned_data = {}
+        
+        for key, value in data.items():
+            if value is None:
+                cleaned_data[key] = None
+                continue
+            
+            # 공통 정제 작업
+            cleaned_value = value.strip()
+            cleaned_value = re.sub(r'\s+', ' ', cleaned_value)  # 연속 공백 제거
+            cleaned_value = cleaned_value.replace('\n', ' ').replace('\r', '')  # 개행문자 제거
+            
+            # 필드별 특별 정제
+            if '금액' in key:
+                # 금액 필드의 경우 숫자와 단위만 남기기
+                cleaned_value = re.sub(r'[^\d,원억만천백십일]', '', cleaned_value)
+            elif '일자' in key or '날짜' in key:
+                # 날짜 필드의 경우 날짜 형식 정제
+                cleaned_value = re.sub(r'[^\d\-\./년월일]', '', cleaned_value)
+            
+            # 빈 문자열이나 '-'는 None으로 처리
+            if cleaned_value == '' or cleaned_value == '-':
+                cleaned_value = None
+            
+            cleaned_data[key] = cleaned_value
+        
+        return cleaned_data
