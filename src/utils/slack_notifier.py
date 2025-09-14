@@ -9,20 +9,26 @@ import json
 from typing import Dict, List, Optional
 from loguru import logger
 from datetime import datetime
+from .stock_analyzer import StockAnalyzer, StockAnalysisResult
 
 
 class SlackNotifier:
     """슬랙 웹훅을 통한 알림 전송 클래스"""
     
-    def __init__(self, webhook_url: Optional[str] = None):
+    def __init__(self, webhook_url: Optional[str] = None, kis_app_key: str = None, kis_app_secret: str = None):
         """
         슬랙 알림 클래스를 초기화합니다.
         
         Args:
             webhook_url (Optional[str]): 슬랙 웹훅 URL
+            kis_app_key (str): KIS API 앱키 (주식 분석용)
+            kis_app_secret (str): KIS API 앱시크릿 (주식 분석용)
         """
         self.webhook_url = webhook_url
         self.is_enabled = bool(webhook_url)
+        
+        # 주식 분석기 초기화
+        self.stock_analyzer = StockAnalyzer(kis_app_key, kis_app_secret)
         
         if self.is_enabled:
             logger.info("슬랙 알림이 활성화되었습니다.")
@@ -80,10 +86,16 @@ class SlackNotifier:
         # 헤더 메시지
         header_text = f"🚨 *신규 단일판매공급계약 발견!* ({len(contracts)}건)"
         
-        # 각 계약별 상세 정보 생성
+        # 각 계약별 상세 정보 생성 (주식 분석 포함)
         attachments = []
         
         for i, contract in enumerate(contracts, 1):
+            # 주식 분석 수행
+            try:
+                analysis = self.stock_analyzer.analyze_stock_for_contract(contract)
+            except Exception as e:
+                logger.error(f"주식 분석 중 오류 발생: {e}")
+                analysis = None
             # 계약 금액 포맷팅
             contract_amount = self._format_amount(contract.get('계약금액', ''))
             recent_sales = self._format_amount(contract.get('최근 매출액', ''))
@@ -98,48 +110,97 @@ class SlackNotifier:
             end_date = self._format_date(contract.get('종료일', ''))
             contract_period = f"{start_date} ~ {end_date}" if start_date and end_date else "정보 없음"
             
-            # 첨부 파일 생성
-            attachment = {
-                "color": "#36a64f" if i == 1 else "#2eb886",  # 첫 번째는 진한 초록, 나머지는 연한 초록
-                "title": f"📋 {contract.get('종목명', '정보 없음')} ({contract.get('종목코드', '')})",
-                "title_link": contract.get('보고서링크', ''),
-                "fields": [
+            # 색상 결정 (분석 점수 기반)
+            if analysis and analysis.recommendation_score >= 7:
+                color = "#ff6b6b"  # 빨간색 (매우 유망)
+            elif analysis and analysis.recommendation_score >= 5:
+                color = "#ffa500"  # 주황색 (유망)
+            elif analysis and analysis.recommendation_score >= 3:
+                color = "#36a64f"  # 초록색 (보통)
+            else:
+                color = "#808080"  # 회색 (주의)
+            
+            # 기본 필드 구성
+            fields = [
+                {
+                    "title": "계약상대방",
+                    "value": contract.get('계약상대방', '정보 없음'),
+                    "short": True
+                },
+                {
+                    "title": "계약금액",
+                    "value": contract_amount,
+                    "short": True
+                },
+                {
+                    "title": "계약내용",
+                    "value": self._truncate_text(contract.get('판매ㆍ공급계약 내용', '정보 없음'), 100),
+                    "short": False
+                },
+                {
+                    "title": "계약기간",
+                    "value": contract_period,
+                    "short": True
+                },
+                {
+                    "title": "매출액 대비",
+                    "value": sales_ratio or "정보 없음",
+                    "short": True
+                }
+            ]
+            
+            # 주식 분석 결과 추가
+            if analysis:
+                fields.extend([
                     {
-                        "title": "계약상대방",
-                        "value": contract.get('계약상대방', '정보 없음'),
-                        "short": True
-                    },
-                    {
-                        "title": "계약금액",
-                        "value": contract_amount,
-                        "short": True
-                    },
-                    {
-                        "title": "계약내용",
-                        "value": self._truncate_text(contract.get('판매ㆍ공급계약 내용', '정보 없음'), 100),
+                        "title": "📊 투자 분석",
+                        "value": analysis.analysis_summary,
                         "short": False
                     },
                     {
-                        "title": "계약기간",
-                        "value": contract_period,
+                        "title": "현재가",
+                        "value": f"{analysis.current_price:,}원",
                         "short": True
                     },
                     {
-                        "title": "매출액 대비",
-                        "value": sales_ratio or "정보 없음",
+                        "title": "시가총액",
+                        "value": f"{analysis.market_cap:,}억원",
                         "short": True
                     },
                     {
-                        "title": "최근 매출액",
-                        "value": recent_sales,
+                        "title": f"{analysis.market_type} 지수",
+                        "value": f"{analysis.index_current:,.1f} (MA200: {analysis.index_ma200:,.1f})",
                         "short": True
                     },
                     {
-                        "title": "시장구분",
-                        "value": contract.get('시장구분', '정보 없음'),
+                        "title": "거래량 비율",
+                        "value": f"{analysis.volume_ratio:.1f}배 {'✅' if analysis.volume_ratio >= 2.0 else '❌'}",
+                        "short": True
+                    },
+                    {
+                        "title": "추천점수",
+                        "value": f"{analysis.recommendation_score}/10점",
+                        "short": True
+                    },
+                    {
+                        "title": "캔들 상태",
+                        "value": "✅ 양봉" if analysis.is_positive_candle else "❌ 음봉",
                         "short": True
                     }
-                ],
+                ])
+            else:
+                fields.append({
+                    "title": "📊 투자 분석",
+                    "value": "❌ 분석 데이터 없음",
+                    "short": False
+                })
+            
+            # 첨부 파일 생성
+            attachment = {
+                "color": color,
+                "title": f"📋 {contract.get('종목명', '정보 없음')} ({contract.get('종목코드', '')})",
+                "title_link": contract.get('보고서링크', ''),
+                "fields": fields,
                 "footer": f"접수일자: {self._format_date(contract.get('접수일자', ''))}",
                 "ts": int(datetime.now().timestamp())
             }

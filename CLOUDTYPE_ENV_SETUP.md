@@ -82,6 +82,26 @@ base64 -i /path/to/service-account.json
 - **획득 방법**: 슬랙 워크스페이스에서 Incoming Webhook 앱 설치 후 URL 생성
 - **선택사항**: 설정하지 않으면 알림 기능이 비활성화됩니다
 
+### 8. **KIS_APP_KEY** (선택사항)
+```
+변수명: KIS_APP_KEY
+설명: 한국투자증권 KIS API 앱키 (주식 분석용)
+값: your_kis_app_key
+```
+- **설명**: 실시간 주식 데이터 조회 및 투자 분석에 사용됩니다
+- **획득 방법**: 한국투자증권 KIS Developers에서 API 신청
+- **선택사항**: 설정하지 않으면 Mock 데이터로 분석합니다
+
+### 9. **KIS_APP_SECRET** (선택사항)
+```
+변수명: KIS_APP_SECRET
+설명: 한국투자증권 KIS API 앱시크릿 (주식 분석용)
+값: your_kis_app_secret
+```
+- **설명**: KIS API 인증에 필요한 시크릿키입니다
+- **획득 방법**: KIS_APP_KEY와 함께 발급됩니다
+- **선택사항**: 설정하지 않으면 Mock 데이터로 분석합니다
+
 ---
 
 ## 🛠️ 클라우드타입 배포 설정
@@ -157,6 +177,8 @@ ENVIRONMENT = production
 PORT = 8080
 LOG_LEVEL = INFO
 SLACK_WEBHOOK = https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+KIS_APP_KEY = your_kis_app_key
+KIS_APP_SECRET = your_kis_app_secret
 ```
 
 ---

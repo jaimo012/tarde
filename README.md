@@ -51,6 +51,8 @@ pip install requests pandas numpy python-dateutil python-dotenv loguru fastapi u
    ENVIRONMENT=development
    LOG_LEVEL=DEBUG
    SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+   KIS_APP_KEY=your_kis_app_key
+   KIS_APP_SECRET=your_kis_app_secret
    ```
 
 #### 클라우드타입 배포환경
@@ -65,6 +67,8 @@ pip install requests pandas numpy python-dateutil python-dotenv loguru fastapi u
 
 선택사항 환경변수:
 - `SLACK_WEBHOOK`: 슬랙 웹훅 URL (신규 계약 알림용)
+- `KIS_APP_KEY`: 한국투자증권 KIS API 앱키 (주식 분석용)
+- `KIS_APP_SECRET`: 한국투자증권 KIS API 앱시크릿 (주식 분석용)
 
 ### 3. 실행
 
@@ -84,7 +88,8 @@ trade/
 │   │   └── client.py             # 스프레드시트 클라이언트
 │   ├── utils/                    # 유틸리티 함수
 │   │   ├── slack_notifier.py     # 슬랙 알림 모듈
-│   │   └── market_schedule.py    # 시장 스케줄 관리
+│   │   ├── market_schedule.py    # 시장 스케줄 관리
+│   │   └── stock_analyzer.py     # 주식 분석 모듈
 │   └── main.py                   # 메인 실행 로직
 ├── config/                       # 설정 파일
 │   └── settings.py               # 시스템 설정
@@ -100,6 +105,7 @@ trade/
 ├── test_market_schedule.py       # 시장 스케줄 테스트
 ├── CLOUDTYPE_ENV_SETUP.md        # 클라우드타입 배포 가이드
 ├── SLACK_SETUP_GUIDE.md          # 슬랙 웹훅 설정 가이드
+├── KIS_API_SETUP_GUIDE.md        # KIS API 설정 가이드
 └── README.md                     # 프로젝트 문서
 
 ```
@@ -137,23 +143,33 @@ trade/
 - **개장시간(08:30~15:30)에만 스크래핑 실행**
 - 2024-2025년 공휴일 데이터베이스 내장
 
-### 2. 📢 슬랙 알림 시스템
+### 2. 📊 지능형 주식 분석 시스템
+- **실시간 주식 데이터 분석** (한국투자증권 KIS API 연동)
+- **시장지수 vs 200일 이동평균** 비교 분석
+- **시가총액 범위 체크** (500억~5,000억 적정 구간)
+- **매출 대비 계약금액 비율** 분석 (20% 기준)
+- **거래량 급증 감지** (20일 평균 대비 2배 이상)
+- **양봉/음봉 캔들 패턴** 분석
+- **종합 투자 점수** 산출 (0-10점)
+
+### 3. 📢 슬랙 알림 시스템
 - **신규 계약 발견 시 실시간 알림**
-- 계약 정보 구조화된 메시지로 전송
+- **주식 분석 결과 포함** 상세 메시지
 - 계약금액 읽기 쉬운 형태 포맷팅 (억원, 만원 단위)
+- **투자 매력도별 색상 구분** (빨강: 매우유망, 주황: 유망, 초록: 보통, 회색: 주의)
 - **시장 휴장일 알림**
 - **시스템 오류 및 완료 상태 알림**
 
-### 3. 🔍 DART API 연동
+### 4. 🔍 DART API 연동
 - 한국 공시시스템(DART)에서 "단일판매ㆍ공급계약체결" 공시 자동 검색
 - 실시간 공시 데이터 수집 및 분석
 
-### 4. 📊 구글 스프레드시트 연동
+### 5. 📊 구글 스프레드시트 연동
 - 종목 리스트 자동 로드 ("분석대상" TRUE인 항목만)
 - 신규 계약 정보 자동 저장
 - 중복 데이터 자동 제거
 
-### 5. 🧠 지능형 데이터 분석
+### 6. 🧠 지능형 데이터 분석
 - HTML/XML 보고서 자동 파싱
 - 계약 정보 추출 (계약일자, 금액, 기간 등)
 - 완전성 검증 후 분류 저장
