@@ -33,13 +33,20 @@ class DartScrapingSystem:
     
     def _setup_logging(self):
         """로깅 설정을 초기화합니다."""
+        import pytz
+        
+        # 한국 시간대 설정
+        kst = pytz.timezone('Asia/Seoul')
+        
         logger.add(
             LOGGING_CONFIG['file_path'],
             format=LOGGING_CONFIG['format'],
             level=LOGGING_CONFIG['level'],
             rotation=LOGGING_CONFIG['rotation'],
             retention=LOGGING_CONFIG['retention'],
-            encoding='utf-8'
+            encoding='utf-8',
+            serialize=LOGGING_CONFIG.get('serialize', False),
+            filter=lambda record: record.update(time=record['time'].astimezone(kst))
         )
     
     def run(self) -> bool:

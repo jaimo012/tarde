@@ -82,14 +82,16 @@ DART_API_CONFIG = {
     'request_delay': 0.2 if IS_PRODUCTION else 0.1  # 프로덕션에서는 더 안전한 간격
 }
 
-# 로깅 설정
+# 로깅 설정 (한국 시간대 적용)
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 LOGGING_CONFIG = {
     'level': LOG_LEVEL,
     'format': '{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}',
     'file_path': '/tmp/dart_scraper.log' if IS_PRODUCTION else 'logs/dart_scraper.log',
     'rotation': '1 day',
-    'retention': '7 days' if IS_PRODUCTION else '30 days'  # 프로덕션에서는 짧게
+    'retention': '7 days' if IS_PRODUCTION else '30 days',  # 프로덕션에서는 짧게
+    'serialize': True,
+    'timezone': 'Asia/Seoul'  # 한국 시간대 설정
 }
 
 # 클라우드타입 전용 설정

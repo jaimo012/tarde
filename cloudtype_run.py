@@ -32,8 +32,12 @@ except Exception as e:
     print(f"❌ 환경 설정 오류: {e}")
     sys.exit(1)
 
-# 로깅 설정
+# 로깅 설정 (한국 시간대 적용)
 from loguru import logger
+import pytz
+
+# 한국 시간대 설정
+kst = pytz.timezone('Asia/Seoul')
 
 # 기존 로거 제거 후 클라우드타입 전용 설정 적용
 logger.remove()
@@ -41,7 +45,8 @@ logger.add(
     sys.stdout,
     format=LOGGING_CONFIG['format'],
     level=LOGGING_CONFIG['level'],
-    colorize=not IS_PRODUCTION  # 프로덕션에서는 색상 제거
+    colorize=not IS_PRODUCTION,  # 프로덕션에서는 색상 제거
+    filter=lambda record: record.update(time=record['time'].astimezone(kst))
 )
 
 if IS_PRODUCTION:
@@ -51,7 +56,8 @@ if IS_PRODUCTION:
         level=LOGGING_CONFIG['level'],
         rotation=LOGGING_CONFIG['rotation'],
         retention=LOGGING_CONFIG['retention'],
-        encoding='utf-8'
+        encoding='utf-8',
+        filter=lambda record: record.update(time=record['time'].astimezone(kst))
     )
 
 # 전역 변수

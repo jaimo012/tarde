@@ -72,13 +72,15 @@ if not IS_CLOUDTYPE:
         'request_delay': 0.1  # API 요청 간 대기시간 (초)
     }
 
-    # 로깅 설정
+    # 로깅 설정 (한국 시간대 적용)
     LOGGING_CONFIG = {
         'level': os.getenv('LOG_LEVEL', 'INFO'),
         'format': '{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}',
         'file_path': 'logs/dart_scraper.log',
         'rotation': '1 day',
-        'retention': '30 days'
+        'retention': '30 days',
+        'serialize': True,
+        'timezone': 'Asia/Seoul'  # 한국 시간대 설정
     }
 
     # 필수 데이터 필드 정의 (이 필드들이 모두 채워져야 '계약' 시트에 저장됨)
