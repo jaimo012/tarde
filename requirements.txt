@@ -1,19 +1,17 @@
-# 키움증권 API 관련
+# 클라우드타입 배포용 최적화된 requirements.txt
+# Python 3.12 호환성 및 최소 의존성으로 구성
+
+# 필수 HTTP 라이브러리
 requests>=2.31.0
-urllib3>=2.0.7
 
 # DART API 및 구글 스프레드시트 연동
 gspread>=6.0.0
 google-auth>=2.23.0
 google-auth-oauthlib>=1.1.0
-google-auth-httplib2>=0.1.0
 
-# 데이터 처리 및 분석 (Python 3.12 호환)
+# 데이터 처리 (최소한만)
 pandas>=2.1.0
 numpy>=1.26.0
-
-# 날짜 및 시간 처리
-python-dateutil>=2.8.0
 
 # 환경 설정 관리
 python-dotenv>=1.0.0
@@ -24,5 +22,5 @@ loguru>=0.7.0
 # HTML/XML 파싱
 beautifulsoup4>=4.12.0
 
-# 암호화 (API 키 보안)
-cryptography>=41.0.0
+# 날짜 처리
+python-dateutil>=2.8.0
