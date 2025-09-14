@@ -1,0 +1,16 @@
+# 로컬 개발환경용 환경변수 템플릿
+# 이 파일을 참고하여 .env 파일을 만들고 실제 값으로 채워주세요
+# .env 파일은 .gitignore에 포함되어 GitHub에 업로드되지 않습니다
+
+# DART API 설정
+DART_API_KEY=your_dart_api_key_here
+
+# 구글 스프레드시트 설정
+SPREADSHEET_URL=https://docs.google.com/spreadsheets/d/your_spreadsheet_id/edit
+SERVICE_ACCOUNT_FILE=config/your_service_account_file.json
+
+# 실행 환경 (로컬 개발시에는 development)
+ENVIRONMENT=development
+
+# 로그 레벨 (DEBUG, INFO, WARNING, ERROR)
+LOG_LEVEL=DEBUG

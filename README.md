@@ -37,18 +37,30 @@ pip install --upgrade pip
 pip install requests pandas numpy python-dateutil python-dotenv loguru fastapi uvicorn pytest black flake8 schedule beautifulsoup4 selenium matplotlib plotly cryptography gspread google-auth google-auth-oauthlib google-auth-httplib2
 ```
 
-### 2. 설정 파일 준비
+### 2. 환경변수 설정
 
-#### 구글 서비스 계정 설정
-1. [Google Cloud Console](https://console.cloud.google.com/)에서 프로젝트 생성
-2. Google Sheets API 및 Google Drive API 활성화
-3. 서비스 계정 생성 및 JSON 키 파일 다운로드
-4. JSON 키 파일을 `config/` 폴더에 저장
-5. `config/settings.py`에서 `SERVICE_ACCOUNT_FILE` 경로 수정
+⚠️ **중요**: 민감한 정보는 절대 코드에 하드코딩하지 마세요!
 
-#### DART API 키 설정
-1. [DART 오픈API](https://opendart.fss.or.kr/) 사이트에서 API 키 발급
-2. `config/settings.py`에서 `DART_API_KEY` 값 수정
+#### 로컬 개발환경
+1. `env-template.txt` 파일을 참고하여 `.env` 파일 생성
+2. 실제 값으로 환경변수 설정:
+   ```env
+   DART_API_KEY=your_actual_dart_api_key
+   SPREADSHEET_URL=your_actual_spreadsheet_url
+   SERVICE_ACCOUNT_FILE=config/your_service_account.json
+   ENVIRONMENT=development
+   LOG_LEVEL=DEBUG
+   ```
+
+#### 클라우드타입 배포환경
+**📋 자세한 설정 방법은 `CLOUDTYPE_ENV_SETUP.md` 참조**
+
+필수 환경변수:
+- `DART_API_KEY`: DART API 인증키
+- `GOOGLE_SERVICE_ACCOUNT_JSON`: Base64 인코딩된 구글 서비스 계정 JSON
+- `SPREADSHEET_URL`: 구글 스프레드시트 URL
+- `ENVIRONMENT`: production
+- `PORT`: 8080
 
 ### 3. 실행
 

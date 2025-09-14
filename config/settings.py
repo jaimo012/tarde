@@ -27,11 +27,18 @@ if IS_CLOUDTYPE:
 if not IS_CLOUDTYPE:
     # 로컬 개발 환경 설정
     # DART API 설정
-    DART_API_KEY = os.getenv('DART_API_KEY', '95aa8b9247edaaf3fd89be2f0f063c8cdf9893cc')
+    DART_API_KEY = os.getenv('DART_API_KEY')
+    if not DART_API_KEY:
+        raise ValueError("DART_API_KEY 환경변수가 설정되지 않았습니다.")
 
     # 구글 스프레드시트 설정
-    SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1FOreBqJdIfshsbTumxybVzfDOz9dvQGDZTLcQNIy6Q4/edit?usp=sharing"
-    SERVICE_ACCOUNT_FILE = os.getenv('SERVICE_ACCOUNT_FILE', 'config/life-coordinator-a8de30e91786.json')
+    SPREADSHEET_URL = os.getenv('SPREADSHEET_URL')
+    if not SPREADSHEET_URL:
+        raise ValueError("SPREADSHEET_URL 환경변수가 설정되지 않았습니다.")
+    
+    SERVICE_ACCOUNT_FILE = os.getenv('SERVICE_ACCOUNT_FILE')
+    if not SERVICE_ACCOUNT_FILE:
+        raise ValueError("SERVICE_ACCOUNT_FILE 환경변수가 설정되지 않았습니다.")
 
     # 시트 이름 설정
     SHEET_NAMES = {

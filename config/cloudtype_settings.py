@@ -44,7 +44,10 @@ def get_google_service_account_info() -> Dict[str, Any]:
         raise ValueError(f"구글 서비스 계정 JSON 디코딩 실패: {e}")
 
 # 구글 스프레드시트 설정
-SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1FOreBqJdIfshsbTumxybVzfDOz9dvQGDZTLcQNIy6Q4/edit?usp=sharing"
+SPREADSHEET_URL = os.getenv('SPREADSHEET_URL')
+if not SPREADSHEET_URL:
+    raise ValueError("SPREADSHEET_URL 환경변수가 설정되지 않았습니다.")
+
 GOOGLE_SERVICE_ACCOUNT_INFO = get_google_service_account_info()
 
 # 시트 이름 설정
