@@ -10,30 +10,32 @@ import gspread
 from google.oauth2.service_account import Credentials
 from typing import Dict, List, Optional, Tuple
 from loguru import logger
+import os
 
 from config.settings import (
     SPREADSHEET_URL, 
-    SERVICE_ACCOUNT_FILE, 
     SHEET_NAMES, 
-    SHEET_COLUMNS
+    SHEET_COLUMNS,
+    ENVIRONMENT
 )
 
 
 class GoogleSheetsClient:
     """구글 스프레드시트와의 연동을 담당하는 클라이언트 클래스"""
     
-    def __init__(self, service_account_file: str = SERVICE_ACCOUNT_FILE):
+    def __init__(self, service_account_file: Optional[str] = None):
         """
         구글 스프레드시트 클라이언트를 초기화합니다.
         
         Args:
-            service_account_file (str): 서비스 계정 JSON 파일 경로
+            service_account_file (Optional[str]): 서비스 계정 JSON 파일 경로 (클라우드타입에서는 사용하지 않음)
         """
         self.service_account_file = service_account_file
         self.spreadsheet_url = SPREADSHEET_URL
         self.sheet_names = SHEET_NAMES
         self.sheet_columns = SHEET_COLUMNS
         self.document = None
+        self.is_cloudtype = ENVIRONMENT == 'production'
         
         # 구글 API 권한 범위 설정
         self.scope = [
@@ -41,7 +43,7 @@ class GoogleSheetsClient:
             'https://www.googleapis.com/auth/drive'
         ]
         
-        logger.info("구글 스프레드시트 클라이언트가 초기화되었습니다.")
+        logger.info(f"구글 스프레드시트 클라이언트가 초기화되었습니다. (환경: {ENVIRONMENT})")
     
     def connect(self) -> bool:
         """
@@ -51,11 +53,22 @@ class GoogleSheetsClient:
             bool: 연결 성공 여부
         """
         try:
-            # 서비스 계정 인증
-            credentials = Credentials.from_service_account_file(
-                self.service_account_file, 
-                scopes=self.scope
-            )
+            if self.is_cloudtype:
+                # 클라우드타입 환경: 환경변수에서 서비스 계정 정보 가져오기
+                from config.cloudtype_settings import GOOGLE_SERVICE_ACCOUNT_INFO
+                credentials = Credentials.from_service_account_info(
+                    GOOGLE_SERVICE_ACCOUNT_INFO,
+                    scopes=self.scope
+                )
+                logger.info("클라우드타입 환경에서 서비스 계정 정보를 사용합니다.")
+            else:
+                # 로컬 환경: JSON 파일 사용
+                service_account_file = self.service_account_file or os.getenv('SERVICE_ACCOUNT_FILE', 'config/life-coordinator-a8de30e91786.json')
+                credentials = Credentials.from_service_account_file(
+                    service_account_file, 
+                    scopes=self.scope
+                )
+                logger.info(f"로컬 환경에서 서비스 계정 파일을 사용합니다: {service_account_file}")
             
             # gspread 클라이언트 생성
             gc = gspread.authorize(credentials)
