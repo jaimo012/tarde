@@ -29,3 +29,7 @@ pytz>=2023.3
 # 주식 데이터 조회 (한국거래소 공식 데이터)
 pykrx>=1.0.40
 setuptools>=65.0.0  # pykrx 의존성
+
+# 차트 생성
+matplotlib>=3.7.0
+pillow>=10.0.0  # 이미지 처리

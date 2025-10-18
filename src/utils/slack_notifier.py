@@ -52,169 +52,256 @@ class SlackNotifier:
             return True
         
         try:
-            # 메시지 생성
-            message = self._create_contract_message(contracts)
+            for contract in contracts:
+                # 각 계약별로 별도 메시지 전송 (차트 이미지 포함)
+                message = self._create_contract_message(contract)
+                success = self._send_to_slack(message)
+                
+                if not success:
+                    logger.error(f"슬랙 알림 전송 실패: {contract.get('종목명', 'Unknown')}")
+                else:
+                    logger.info(f"슬랙 알림 전송 성공: {contract.get('종목명', 'Unknown')}")
             
-            # 슬랙으로 전송
-            success = self._send_to_slack(message)
-            
-            if success:
-                logger.info(f"슬랙 알림 전송 성공: {len(contracts)}개 신규 계약")
-            else:
-                logger.error("슬랙 알림 전송 실패")
-            
-            return success
+            return True
             
         except Exception as e:
             logger.error(f"슬랙 알림 전송 중 오류 발생: {e}")
             return False
     
-    def _create_contract_message(self, contracts: List[Dict]) -> Dict:
+    def _create_contract_message(self, contract: Dict) -> Dict:
         """
         계약 정보를 슬랙 메시지 형식으로 변환합니다.
         
         Args:
-            contracts (List[Dict]): 계약 정보 목록
+            contract (Dict): 계약 정보
             
         Returns:
             Dict: 슬랙 메시지 페이로드
         """
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # 주식 분석 수행
+        try:
+            analysis = self.stock_analyzer.analyze_stock_for_contract(contract)
+        except Exception as e:
+            logger.error(f"주식 분석 중 오류 발생: {e}")
+            analysis = None
         
-        # 헤더 메시지
-        header_text = f"🚨 *신규 단일판매공급계약 발견!* ({len(contracts)}건)"
+        # 색상 결정 (분석 점수 기반)
+        if analysis and analysis.recommendation_score >= 7:
+            color = "#FF4444"  # 빨간색 (매우 유망)
+        elif analysis and analysis.recommendation_score >= 5:
+            color = "#FFA500"  # 주황색 (유망)
+        elif analysis and analysis.recommendation_score >= 3:
+            color = "#36A64F"  # 초록색 (보통)
+        else:
+            color = "#808080"  # 회색 (주의)
         
-        # 각 계약별 상세 정보 생성 (주식 분석 포함)
-        attachments = []
+        # 헤더 텍스트
+        header_text = f"🚨 *신규 단일판매공급계약 발견!*"
         
-        for i, contract in enumerate(contracts, 1):
-            # 주식 분석 수행
-            try:
-                analysis = self.stock_analyzer.analyze_stock_for_contract(contract)
-            except Exception as e:
-                logger.error(f"주식 분석 중 오류 발생: {e}")
-                analysis = None
-            # 계약 금액 포맷팅
-            contract_amount = self._format_amount(contract.get('계약금액', ''))
-            recent_sales = self._format_amount(contract.get('최근 매출액', ''))
+        # ========== 섹션 1: 종목정보 ==========
+        section1_fields = [
+            {
+                "title": "종목코드",
+                "value": contract.get('종목코드', '정보 없음'),
+                "short": True
+            },
+            {
+                "title": "종목명",
+                "value": contract.get('종목명', '정보 없음'),
+                "short": True
+            },
+            {
+                "title": "시장구분",
+                "value": contract.get('시장구분', '정보 없음'),
+                "short": True
+            },
+            {
+                "title": "업종명",
+                "value": contract.get('업종명', '정보 없음'),
+                "short": True
+            }
+        ]
+        
+        # 업종 강조 표시
+        if analysis and analysis.is_target_industry:
+            section1_fields.append({
+                "title": "⭐ 주목 업종",
+                "value": f"✅ {analysis.industry_name}",
+                "short": False
+            })
+        
+        # ========== 섹션 2: 투자정보 ==========
+        section2_fields = [
+            {
+                "title": "접수일자",
+                "value": self._format_date(contract.get('접수일자', '')),
+                "short": True
+            },
+            {
+                "title": "계약(수주)일자",
+                "value": self._format_date(contract.get('계약(수주)일자', '')),
+                "short": True
+            },
+            {
+                "title": "계약상대방",
+                "value": contract.get('계약상대방', '정보 없음'),
+                "short": True
+            },
+            {
+                "title": "계약금액",
+                "value": self._format_amount(contract.get('계약금액', '')),
+                "short": True
+            },
+            {
+                "title": "계약내용",
+                "value": self._truncate_text(contract.get('판매ㆍ공급계약 내용', '정보 없음'), 150),
+                "short": False
+            },
+            {
+                "title": "계약기간",
+                "value": f"{self._format_date(contract.get('시작일', ''))} ~ {self._format_date(contract.get('종료일', ''))}",
+                "short": True
+            },
+            {
+                "title": "최근 매출액",
+                "value": self._format_amount(contract.get('최근 매출액', '')),
+                "short": True
+            },
+            {
+                "title": "매출액 대비 비율",
+                "value": f"{contract.get('매출액 대비 비율', '0')}%",
+                "short": True
+            }
+        ]
+        
+        # ========== 섹션 3: 분석의견 ==========
+        if analysis:
+            # 등락률 이모지
+            change_emoji = "📈" if analysis.price_change_rate >= 0 else "📉"
+            change_sign = "+" if analysis.price_change_rate >= 0 else ""
             
-            # 매출액 대비 비율 계산
-            sales_ratio = contract.get('매출액 대비 비율', '')
-            if sales_ratio:
-                sales_ratio = f"{sales_ratio}%"
-            
-            # 계약 기간 포맷팅
-            start_date = self._format_date(contract.get('시작일', ''))
-            end_date = self._format_date(contract.get('종료일', ''))
-            contract_period = f"{start_date} ~ {end_date}" if start_date and end_date else "정보 없음"
-            
-            # 색상 결정 (분석 점수 기반)
-            if analysis and analysis.recommendation_score >= 7:
-                color = "#ff6b6b"  # 빨간색 (매우 유망)
-            elif analysis and analysis.recommendation_score >= 5:
-                color = "#ffa500"  # 주황색 (유망)
-            elif analysis and analysis.recommendation_score >= 3:
-                color = "#36a64f"  # 초록색 (보통)
-            else:
-                color = "#808080"  # 회색 (주의)
-            
-            # 기본 필드 구성
-            fields = [
+            section3_fields = [
                 {
-                    "title": "계약상대방",
-                    "value": contract.get('계약상대방', '정보 없음'),
+                    "title": "시가총액",
+                    "value": f"{analysis.market_cap:,}억원",
                     "short": True
                 },
                 {
-                    "title": "계약금액",
-                    "value": contract_amount,
+                    "title": "당일시가",
+                    "value": f"{analysis.opening_price:,}원",
                     "short": True
                 },
                 {
-                    "title": "계약내용",
-                    "value": self._truncate_text(contract.get('판매ㆍ공급계약 내용', '정보 없음'), 100),
+                    "title": "현재가",
+                    "value": f"{analysis.current_price:,}원",
+                    "short": True
+                },
+                {
+                    "title": f"등락률 {change_emoji}",
+                    "value": f"{change_sign}{analysis.price_change_rate:+.2f}%",
+                    "short": True
+                },
+                {
+                    "title": "캔들 상태",
+                    "value": "✅ 양봉" if analysis.is_positive_candle else "❌ 음봉",
+                    "short": True
+                },
+                {
+                    "title": "거래량 비율",
+                    "value": f"{analysis.volume_ratio:.1f}배 {'✅' if analysis.volume_ratio >= 2.0 else '❌'}",
+                    "short": True
+                },
+                {
+                    "title": f"{analysis.market_type} 지수",
+                    "value": f"{analysis.index_current:,.1f}",
+                    "short": True
+                },
+                {
+                    "title": "200일 이동평균",
+                    "value": f"{analysis.index_ma200:,.1f}",
+                    "short": True
+                },
+                {
+                    "title": "📊 종합 분석",
+                    "value": analysis.analysis_summary,
                     "short": False
                 },
                 {
-                    "title": "계약기간",
-                    "value": contract_period,
-                    "short": True
-                },
-                {
-                    "title": "매출액 대비",
-                    "value": sales_ratio or "정보 없음",
+                    "title": "🎯 추천점수",
+                    "value": f"*{analysis.recommendation_score}/10점*",
                     "short": True
                 }
             ]
-            
-            # 주식 분석 결과 추가
-            if analysis:
-                fields.extend([
-                    {
-                        "title": "📊 투자 분석",
-                        "value": analysis.analysis_summary,
-                        "short": False
-                    },
-                    {
-                        "title": "현재가",
-                        "value": f"{analysis.current_price:,}원",
-                        "short": True
-                    },
-                    {
-                        "title": "시가총액",
-                        "value": f"{analysis.market_cap:,}억원",
-                        "short": True
-                    },
-                    {
-                        "title": f"{analysis.market_type} 지수",
-                        "value": f"{analysis.index_current:,.1f} (MA200: {analysis.index_ma200:,.1f})",
-                        "short": True
-                    },
-                    {
-                        "title": "거래량 비율",
-                        "value": f"{analysis.volume_ratio:.1f}배 {'✅' if analysis.volume_ratio >= 2.0 else '❌'}",
-                        "short": True
-                    },
-                    {
-                        "title": "추천점수",
-                        "value": f"{analysis.recommendation_score}/10점",
-                        "short": True
-                    },
-                    {
-                        "title": "캔들 상태",
-                        "value": "✅ 양봉" if analysis.is_positive_candle else "❌ 음봉",
-                        "short": True
-                    }
-                ])
-            else:
-                fields.append({
-                    "title": "📊 투자 분석",
-                    "value": "❌ 분석 데이터 없음",
-                    "short": False
-                })
-            
-            # 첨부 파일 생성
-            attachment = {
+        else:
+            section3_fields = [{
+                "title": "📊 분석 의견",
+                "value": "❌ 주식 분석 데이터를 가져올 수 없습니다.",
+                "short": False
+            }]
+        
+        # 첨부파일 구성
+        attachments = [
+            {
                 "color": color,
                 "title": f"📋 {contract.get('종목명', '정보 없음')} ({contract.get('종목코드', '')})",
                 "title_link": contract.get('보고서링크', ''),
-                "fields": fields,
-                "footer": f"접수일자: {self._format_date(contract.get('접수일자', ''))}",
+                "fields": [],
                 "ts": int(datetime.now().timestamp())
             }
-            
-            attachments.append(attachment)
+        ]
+        
+        # 섹션별로 분리된 attachment 생성
+        attachments[0]["fields"] = [
+            {"title": "━━━━━━━━ 📌 종목정보 ━━━━━━━━", "value": "", "short": False}
+        ] + section1_fields + [
+            {"title": "", "value": "", "short": False},
+            {"title": "━━━━━━━━ 💰 투자정보 ━━━━━━━━", "value": "", "short": False}
+        ] + section2_fields + [
+            {"title": "", "value": "", "short": False},
+            {"title": "━━━━━━━━ 📊 분석의견 ━━━━━━━━", "value": "", "short": False}
+        ] + section3_fields
+        
+        # Footer 추가
+        attachments[0]["footer"] = f"접수번호: {contract.get('접수번호', '')} | DART 스크래핑 시스템"
         
         # 슬랙 메시지 페이로드
         payload = {
             "text": header_text,
             "attachments": attachments,
             "username": "DART 스크래핑 봇",
-            "icon_emoji": ":chart_with_upwards_trend:",
-            "channel": "#일반"  # 필요시 채널 변경
+            "icon_emoji": ":chart_with_upwards_trend:"
         }
         
+        # 차트 이미지가 있으면 이미지 URL 추가 (파일 업로드 필요)
+        if analysis and analysis.chart_image_path:
+            # 차트 이미지는 별도로 업로드하고 URL을 메시지에 포함
+            chart_uploaded = self._upload_chart_image(analysis.chart_image_path, contract.get('종목명', 'Unknown'))
+            if chart_uploaded:
+                # 이미지가 업로드되면 메시지에 이미지 블록 추가
+                payload["attachments"][0]["image_url"] = chart_uploaded
+        
         return payload
+    
+    def _upload_chart_image(self, image_path: str, stock_name: str) -> Optional[str]:
+        """
+        차트 이미지를 슬랙에 업로드합니다.
+        
+        Args:
+            image_path (str): 이미지 파일 경로
+            stock_name (str): 종목명
+            
+        Returns:
+            Optional[str]: 업로드된 이미지 URL (실패 시 None)
+        """
+        # 슬랙 웹훅은 직접 이미지 업로드를 지원하지 않음
+        # 대신 임시로 차트 이미지를 텍스트로 표시하거나,
+        # 별도의 파일 호스팅 서비스를 사용해야 함
+        # 여기서는 로컬 파일 경로를 로그로만 남김
+        logger.info(f"차트 이미지 생성됨: {image_path} ({stock_name})")
+        
+        # TODO: 실제 구현 시 이미지 호스팅 서비스 (예: imgur, AWS S3) 사용
+        # 현재는 None 반환 (차트는 로컬에 저장됨)
+        return None
     
     def _send_to_slack(self, message: Dict) -> bool:
         """

@@ -9,6 +9,9 @@ from typing import Dict, Optional, Tuple
 from datetime import datetime, timedelta
 from loguru import logger
 from dataclasses import dataclass
+import io
+import os
+import tempfile
 
 try:
     from pykrx import stock
@@ -17,6 +20,17 @@ except ImportError:
     PYKRX_AVAILABLE = False
     logger.warning("pykrx 라이브러리가 설치되지 않았습니다. pip install pykrx로 설치하세요.")
 
+try:
+    import matplotlib
+    matplotlib.use('Agg')  # GUI 없는 환경에서 실행
+    import matplotlib.pyplot as plt
+    import matplotlib.font_manager as fm
+    from matplotlib import dates as mdates
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+    logger.warning("matplotlib 라이브러리가 설치되지 않았습니다.")
+
 
 @dataclass
 class StockAnalysisResult:
@@ -24,7 +38,13 @@ class StockAnalysisResult:
     stock_code: str
     stock_name: str
     market_type: str  # KOSPI, KOSDAQ
+    industry_code: str  # 업종 코드
+    industry_name: str  # 업종명
+    is_target_industry: bool  # 주목 업종 여부
+    
     current_price: int
+    opening_price: int  # 당일 시가
+    price_change_rate: float  # 등락률 (%)
     market_cap: int  # 시가총액 (억원)
     
     # 분석 결과
@@ -43,6 +63,9 @@ class StockAnalysisResult:
     # 메시지용 요약
     analysis_summary: str
     recommendation_score: int  # 0-10점
+    
+    # 차트 이미지 경로
+    chart_image_path: Optional[str] = None
 
 
 class PykrxStockDataClient:
@@ -187,6 +210,104 @@ class PykrxStockDataClient:
             return None
 
 
+class StockChartGenerator:
+    """주식 차트 생성 클래스"""
+    
+    def __init__(self):
+        """차트 생성기를 초기화합니다."""
+        if not MATPLOTLIB_AVAILABLE:
+            logger.warning("matplotlib을 사용할 수 없어 차트를 생성할 수 없습니다.")
+        
+        # 한글 폰트 설정 (Windows 환경)
+        try:
+            if os.name == 'nt':  # Windows
+                plt.rcParams['font.family'] = 'Malgun Gothic'
+            else:
+                plt.rcParams['font.family'] = 'DejaVu Sans'
+            plt.rcParams['axes.unicode_minus'] = False
+        except Exception as e:
+            logger.warning(f"폰트 설정 실패: {e}")
+    
+    def create_candlestick_chart(self, stock_code: str, stock_name: str, 
+                                  df: object, days_to_show: int = 20) -> Optional[str]:
+        """
+        캔들스틱 차트를 생성합니다.
+        
+        Args:
+            stock_code (str): 종목코드
+            stock_name (str): 종목명
+            df (pd.DataFrame): OHLCV 데이터 (100일 이상)
+            days_to_show (int): 표시할 일수 (기본 20일)
+            
+        Returns:
+            Optional[str]: 저장된 차트 이미지 경로 (실패 시 None)
+        """
+        if not MATPLOTLIB_AVAILABLE:
+            return None
+        
+        try:
+            # 최근 N일 데이터만 표시
+            df_display = df.tail(days_to_show).copy()
+            
+            # 5일, 20일 이동평균 계산 (전체 데이터 사용)
+            df['MA5'] = df['종가'].rolling(window=5).mean()
+            df['MA20'] = df['종가'].rolling(window=20).mean()
+            
+            # Figure 생성
+            fig, ax = plt.subplots(figsize=(14, 7))
+            
+            # 캔들스틱 그리기
+            for idx, (date, row) in enumerate(df_display.iterrows()):
+                # 양봉/음봉 색상 결정
+                color = 'red' if row['종가'] >= row['시가'] else 'blue'
+                
+                # 캔들 몸통
+                height = abs(row['종가'] - row['시가'])
+                bottom = min(row['시가'], row['종가'])
+                ax.bar(idx, height, width=0.6, bottom=bottom, color=color, alpha=0.8)
+                
+                # 꼬리 (고가-저가)
+                ax.plot([idx, idx], [row['저가'], row['고가']], color=color, linewidth=1)
+            
+            # 이동평균선 추가 (표시 구간에 해당하는 부분만)
+            ma5_display = df['MA5'].tail(days_to_show)
+            ma20_display = df['MA20'].tail(days_to_show)
+            
+            x_range = range(len(df_display))
+            ax.plot(x_range, ma5_display.values, label='MA5', color='orange', linewidth=1.5)
+            ax.plot(x_range, ma20_display.values, label='MA20', color='green', linewidth=1.5)
+            
+            # X축 날짜 레이블
+            dates = [date.strftime('%m/%d') for date in df_display.index]
+            ax.set_xticks(range(0, len(dates), max(1, len(dates)//10)))
+            ax.set_xticklabels([dates[i] for i in range(0, len(dates), max(1, len(dates)//10))], rotation=45)
+            
+            # 차트 꾸미기
+            ax.set_title(f'{stock_name}({stock_code}) - 최근 {days_to_show}일', fontsize=16, fontweight='bold')
+            ax.set_xlabel('날짜', fontsize=12)
+            ax.set_ylabel('가격 (원)', fontsize=12)
+            ax.legend(loc='best')
+            ax.grid(True, alpha=0.3)
+            
+            # Y축 가격 포맷팅 (천 단위 구분)
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{int(x):,}'))
+            
+            plt.tight_layout()
+            
+            # 임시 파일로 저장
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png', prefix=f'chart_{stock_code}_')
+            chart_path = temp_file.name
+            plt.savefig(chart_path, dpi=100, bbox_inches='tight')
+            plt.close(fig)
+            
+            logger.info(f"차트 생성 완료: {chart_path}")
+            return chart_path
+            
+        except Exception as e:
+            logger.error(f"차트 생성 실패 ({stock_code}): {e}")
+            return None
+
+
 class StockAnalyzer:
     """주식 분석 메인 클래스"""
     
@@ -201,6 +322,7 @@ class StockAnalyzer:
         else:
             self.pykrx_client = PykrxStockDataClient()
         
+        self.chart_generator = StockChartGenerator()
         logger.info("주식 분석기가 초기화되었습니다 (pykrx 기반).")
     
     def analyze_stock_for_contract(self, contract_data: Dict) -> Optional[StockAnalysisResult]:
@@ -220,28 +342,42 @@ class StockAnalyzer:
         stock_code = contract_data.get('종목코드', '')
         stock_name = contract_data.get('종목명', '')
         market_type = contract_data.get('시장구분', 'KOSPI')
+        industry_code = contract_data.get('업종코드', '')
+        industry_name = contract_data.get('업종명', '')
         contract_amount = self._parse_number(contract_data.get('계약금액', '0'))
         recent_sales = self._parse_number(contract_data.get('최근 매출액', '0'))
         
         logger.info(f"종목 분석 시작: {stock_name}({stock_code})")
         
         try:
+            # 업종 확인
+            is_target_industry = self._check_target_industry(industry_code)
+            
             # 오늘 날짜와 분석 기간 설정
             today = datetime.now().strftime("%Y%m%d")
-            # 200일 이동평균 계산을 위해 최소 250일치 데이터 필요 (거래정지일 고려)
-            start_date = (datetime.now() - timedelta(days=300)).strftime("%Y%m%d")
+            # 차트 생성을 위해 100일치 데이터 필요 (거래정지일 고려하여 여유있게)
+            start_date = (datetime.now() - timedelta(days=150)).strftime("%Y%m%d")
             
-            # 1. 주식 데이터 조회
+            # 1. 주식 데이터 조회 (100일치 이상)
             stock_df = self.pykrx_client.get_stock_ohlcv(stock_code, start_date, today)
             if stock_df is None or stock_df.empty:
-                return self._create_error_result(stock_code, stock_name, "주식 데이터 조회 실패")
+                return self._create_error_result(stock_code, stock_name, industry_code, 
+                                                 industry_name, is_target_industry, "주식 데이터 조회 실패")
             
             # 2. 현재가 정보
             current_price_info = self.pykrx_client.get_current_price(stock_code)
             if not current_price_info:
-                return self._create_error_result(stock_code, stock_name, "현재가 조회 실패")
+                return self._create_error_result(stock_code, stock_name, industry_code,
+                                                 industry_name, is_target_industry, "현재가 조회 실패")
             
             current_price = current_price_info['close']
+            opening_price = current_price_info['open']
+            
+            # 등락률 계산
+            if opening_price > 0:
+                price_change_rate = ((current_price - opening_price) / opening_price) * 100
+            else:
+                price_change_rate = 0.0
             
             # 3. 시가총액 조회
             market_cap = self.pykrx_client.get_market_cap(stock_code)
@@ -256,12 +392,19 @@ class StockAnalyzer:
             # 4. 시장 지수 데이터 조회
             index_df = self.pykrx_client.get_market_index(market_type, start_date, today)
             if index_df is None or index_df.empty:
-                return self._create_error_result(stock_code, stock_name, "시장지수 조회 실패")
+                return self._create_error_result(stock_code, stock_name, industry_code,
+                                                 industry_name, is_target_industry, "시장지수 조회 실패")
             
-            # 5. 분석 수행
+            # 5. 차트 생성 (최근 20일 표시, 100일 데이터 사용)
+            chart_path = self.chart_generator.create_candlestick_chart(
+                stock_code, stock_name, stock_df, days_to_show=20
+            )
+            
+            # 6. 분석 수행
             analysis_result = self._perform_analysis(
-                stock_code, stock_name, market_type, current_price, market_cap,
-                contract_amount, recent_sales, stock_df, index_df, current_price_info
+                stock_code, stock_name, market_type, industry_code, industry_name, is_target_industry,
+                current_price, opening_price, price_change_rate, market_cap,
+                contract_amount, recent_sales, stock_df, index_df, current_price_info, chart_path
             )
             
             logger.info(f"종목 분석 완료: {stock_name} (점수: {analysis_result.recommendation_score}/10)")
@@ -269,12 +412,23 @@ class StockAnalyzer:
             
         except Exception as e:
             logger.error(f"종목 분석 중 오류 발생 ({stock_name}): {e}")
-            return self._create_error_result(stock_code, stock_name, f"분석 오류: {str(e)}")
+            return self._create_error_result(stock_code, stock_name, industry_code,
+                                             industry_name, is_target_industry, f"분석 오류: {str(e)}")
     
-    def _perform_analysis(self, stock_code: str, stock_name: str, market_type: str, 
-                         current_price: int, market_cap: int, contract_amount: int,
-                         recent_sales: int, stock_df: object, index_df: object,
-                         current_price_info: Dict) -> StockAnalysisResult:
+    def _check_target_industry(self, industry_code: str) -> bool:
+        """주목 업종인지 확인합니다."""
+        try:
+            from config.settings import TARGET_INDUSTRIES
+            return industry_code in TARGET_INDUSTRIES
+        except:
+            return False
+    
+    def _perform_analysis(self, stock_code: str, stock_name: str, market_type: str,
+                         industry_code: str, industry_name: str, is_target_industry: bool,
+                         current_price: int, opening_price: int, price_change_rate: float,
+                         market_cap: int, contract_amount: int, recent_sales: int,
+                         stock_df: object, index_df: object, current_price_info: Dict,
+                         chart_path: Optional[str]) -> StockAnalysisResult:
         """실제 분석을 수행합니다."""
         
         # 1. 시장지수 200일 이동평균 비교
@@ -328,7 +482,12 @@ class StockAnalyzer:
             stock_code=stock_code,
             stock_name=stock_name,
             market_type=market_type,
+            industry_code=industry_code,
+            industry_name=industry_name,
+            is_target_industry=is_target_industry,
             current_price=current_price,
+            opening_price=opening_price,
+            price_change_rate=price_change_rate,
             market_cap=market_cap,
             is_index_above_ma200=is_index_above_ma200,
             is_market_cap_in_range=is_market_cap_in_range,
@@ -340,7 +499,8 @@ class StockAnalyzer:
             volume_ratio=volume_ratio,
             is_positive_candle=is_positive_candle,
             analysis_summary=analysis_summary,
-            recommendation_score=recommendation_score
+            recommendation_score=recommendation_score,
+            chart_image_path=chart_path
         )
     
     def _create_analysis_summary(self, is_index_above_ma200: bool, is_market_cap_in_range: bool,
@@ -396,13 +556,19 @@ class StockAnalyzer:
         
         return summary, int(score)
     
-    def _create_error_result(self, stock_code: str, stock_name: str, error_msg: str) -> StockAnalysisResult:
+    def _create_error_result(self, stock_code: str, stock_name: str, industry_code: str,
+                            industry_name: str, is_target_industry: bool, error_msg: str) -> StockAnalysisResult:
         """오류 발생 시 기본 결과를 생성합니다."""
         return StockAnalysisResult(
             stock_code=stock_code,
             stock_name=stock_name,
             market_type="UNKNOWN",
+            industry_code=industry_code,
+            industry_name=industry_name,
+            is_target_industry=is_target_industry,
             current_price=0,
+            opening_price=0,
+            price_change_rate=0.0,
             market_cap=0,
             is_index_above_ma200=False,
             is_market_cap_in_range=False,
@@ -414,7 +580,8 @@ class StockAnalyzer:
             volume_ratio=0,
             is_positive_candle=False,
             analysis_summary=f"❌ 분석 실패: {error_msg}",
-            recommendation_score=0
+            recommendation_score=0,
+            chart_image_path=None
         )
     
     def _parse_number(self, value: str) -> int:
