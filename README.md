@@ -51,8 +51,6 @@ pip install requests pandas numpy python-dateutil python-dotenv loguru fastapi u
    ENVIRONMENT=development
    LOG_LEVEL=DEBUG
    SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
-   KIWOOM_APP_KEY=your_kiwoom_app_key
-   KIWOOM_APP_SECRET=your_kiwoom_app_secret
    ```
 
 #### 클라우드타입 배포환경
@@ -67,8 +65,6 @@ pip install requests pandas numpy python-dateutil python-dotenv loguru fastapi u
 
 선택사항 환경변수:
 - `SLACK_WEBHOOK`: 슬랙 웹훅 URL (신규 계약 알림용)
-- `KIWOOM_APP_KEY`: 키움증권 OpenAPI 앱키 (주식 분석용)
-- `KIWOOM_APP_SECRET`: 키움증권 OpenAPI 앱시크릿 (주식 분석용)
 
 ### 3. 실행
 
@@ -148,7 +144,7 @@ trade/
 - 2024-2025년 공휴일 데이터베이스 내장
 
 ### 2. 📊 지능형 주식 분석 시스템
-- **실시간 주식 데이터 분석** (키움증권 OpenAPI 연동)
+- **실시간 주식 데이터 분석** (pykrx 라이브러리 사용)
 - **시장지수 vs 200일 이동평균** 비교 분석
 - **시가총액 범위 체크** (500억~5,000억 적정 구간)
 - **매출 대비 계약금액 비율** 분석 (20% 기준)
@@ -244,10 +240,18 @@ trade/
 
 ## 📋 개발 이력
 
+### v3.0.0 (2025-10-18) - pykrx 기반 주식 분석 시스템
+- 🔄 **pykrx 라이브러리 도입**: 키움증권 API 대체, 무료 공개 데이터 활용
+- 📊 **한국거래소 공식 데이터**: 안정성과 정확도 향상
+- 🎯 **200일 이동평균 실제 계산**: Mock 데이터가 아닌 실제 히스토리 데이터 사용
+- 📈 **거래량 분석 개선**: 20일 평균 거래량 기반 실시간 비교
+- 🚀 **API 키 불필요**: 별도 인증 없이 공개 데이터 사용 가능
+- 💪 **견고한 오류 처리**: 거래정지일, 데이터 부족 등 예외 상황 완벽 대응
+
 ### v2.0.0 (2025-09-14) - 스마트 알림 시스템
 - ✨ **스마트 슬랙 알림 시스템**: 신규 계약 발견 시에만 알림 (스팸 방지)
 - 🕐 **시장 스케줄 기반 실행**: 한국 주식시장 개장일/시간 자동 감지
-- 📊 **지능형 주식 분석**: 키움증권 OpenAPI 연동 실시간 분석
+- 📊 **지능형 주식 분석**: 실시간 주식 데이터 분석
 - 🌏 **한국 시간대 완벽 지원**: 클라우드타입 서버 시간대 자동 설정
 - 🔧 **PowerShell 호환성**: Windows 환경 Git 설정 자동화
 - 📈 **투자 점수 시스템**: 시장지수, 시가총액, 거래량 등 종합 분석
@@ -282,4 +286,4 @@ trade/
 **🔗 관련 링크**
 - [DART 오픈API 가이드](https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019001)
 - [구글 스프레드시트 API 문서](https://developers.google.com/sheets/api)
-- [키움 REST API 문서](document/키움%20REST%20API%20문서.pdf)
+- [pykrx 라이브러리 문서](https://github.com/sharebook-kr/pykrx)

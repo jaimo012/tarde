@@ -53,10 +53,6 @@ GOOGLE_SERVICE_ACCOUNT_INFO = get_google_service_account_info()
 # 슬랙 웹훅 설정 (선택사항)
 SLACK_WEBHOOK_URL = os.getenv('SLACK_WEBHOOK')
 
-# 키움증권 API 설정 (주식 분석용, 선택사항)
-KIWOOM_APP_KEY = os.getenv('KIWOOM_APP_KEY')
-KIWOOM_APP_SECRET = os.getenv('KIWOOM_APP_SECRET')
-
 # 시트 이름 설정
 SHEET_NAMES = {
     'CONTRACT': "계약",

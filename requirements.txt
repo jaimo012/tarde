@@ -25,3 +25,7 @@ beautifulsoup4>=4.12.0
 # 날짜 처리
 python-dateutil>=2.8.0
 pytz>=2023.3
+
+# 주식 데이터 조회 (한국거래소 공식 데이터)
+pykrx>=1.0.40
+setuptools>=65.0.0  # pykrx 의존성

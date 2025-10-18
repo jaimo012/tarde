@@ -15,20 +15,18 @@ from .stock_analyzer import StockAnalyzer, StockAnalysisResult
 class SlackNotifier:
     """슬랙 웹훅을 통한 알림 전송 클래스"""
     
-    def __init__(self, webhook_url: Optional[str] = None, kiwoom_app_key: str = None, kiwoom_app_secret: str = None):
+    def __init__(self, webhook_url: Optional[str] = None):
         """
         슬랙 알림 클래스를 초기화합니다.
         
         Args:
             webhook_url (Optional[str]): 슬랙 웹훅 URL
-            kiwoom_app_key (str): 키움증권 API 앱키 (주식 분석용)
-            kiwoom_app_secret (str): 키움증권 API 앱시크릿 (주식 분석용)
         """
         self.webhook_url = webhook_url
         self.is_enabled = bool(webhook_url)
         
-        # 주식 분석기 초기화
-        self.stock_analyzer = StockAnalyzer(kiwoom_app_key, kiwoom_app_secret)
+        # 주식 분석기 초기화 (pykrx 기반, API 키 불필요)
+        self.stock_analyzer = StockAnalyzer()
         
         if self.is_enabled:
             logger.info("슬랙 알림이 활성화되었습니다.")
