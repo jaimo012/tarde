@@ -183,11 +183,33 @@ class AutoTradingSystem:
             except:
                 pass
             
+            stack_trace = traceback.format_exc()
+            
+            # 슬랙 알림 전송
             self.slack_notifier.send_critical_error(
                 error_title=f"매수 처리 실패: {stock_name}({stock_code})",
                 error_details=error_details,
-                stack_trace=traceback.format_exc()
+                stack_trace=stack_trace
             )
+            
+            # 구글 시트에 오류 로그 기록
+            try:
+                error_log = {
+                    'timestamp': datetime.now(),
+                    'severity': 'ERROR',
+                    'module': '매수 처리',
+                    'error_type': type(e).__name__,
+                    'error_message': str(e)[:200],
+                    'related_stock': f"{stock_name}({stock_code})",
+                    'trading_status': '활성화',
+                    'position_info': '매수 시도 중',
+                    'resolution_status': '미해결',
+                    'details': f"발생 단계: 신규 계약 자동매매 처리\n{stack_trace[-500:] if len(stack_trace) > 500 else stack_trace}"
+                }
+                self.sheets_client.log_error_to_sheet(error_log)
+            except Exception as log_error:
+                logger.error(f"오류 로그 시트 기록 실패: {log_error}")
+            
             return False
     
     def manage_positions(self) -> bool:
@@ -289,6 +311,9 @@ class AutoTradingSystem:
                 "📍 발생 단계": "보유 포지션 관리",
             }
             
+            position_info_text = "조회 실패"
+            related_stock = "해당없음"
+            
             # 현재 포지션 정보 추가 시도
             try:
                 position = self.position_mgr.get_current_position()
@@ -297,13 +322,38 @@ class AutoTradingSystem:
                     error_details["📈 현재가"] = f"{position['current_price']:,}원"
                     error_details["💼 보유수량"] = f"{position['quantity']}주"
                     error_details["📊 수익률"] = f"{position['profit_rate']:.2f}%"
+                    
+                    position_info_text = f"{position['stock_name']}({position['stock_code']}) {position['quantity']}주"
+                    related_stock = f"{position['stock_name']}({position['stock_code']})"
             except:
                 pass
             
+            stack_trace = traceback.format_exc()
+            
+            # 슬랙 알림 전송
             self.slack_notifier.send_critical_error(
                 error_title="포지션 관리 중 오류 발생",
                 error_details=error_details,
-                stack_trace=traceback.format_exc()
+                stack_trace=stack_trace
             )
+            
+            # 구글 시트에 오류 로그 기록
+            try:
+                error_log = {
+                    'timestamp': datetime.now(),
+                    'severity': 'ERROR',
+                    'module': '포지션 관리',
+                    'error_type': type(e).__name__,
+                    'error_message': str(e)[:200],
+                    'related_stock': related_stock,
+                    'trading_status': '활성화',
+                    'position_info': position_info_text,
+                    'resolution_status': '미해결',
+                    'details': f"발생 단계: 보유 포지션 관리\n{stack_trace[-500:] if len(stack_trace) > 500 else stack_trace}"
+                }
+                self.sheets_client.log_error_to_sheet(error_log)
+            except Exception as log_error:
+                logger.error(f"오류 로그 시트 기록 실패: {log_error}")
+            
             return False
 

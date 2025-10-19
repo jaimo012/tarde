@@ -479,3 +479,101 @@ class GoogleSheetsClient:
         except Exception as e:
             logger.error(f"매수 거래 정보 조회 중 오류 발생: {e}")
             return None
+    
+    def ensure_error_log_sheet(self) -> bool:
+        """
+        오류 로그 시트가 존재하는지 확인하고, 없으면 생성합니다.
+        
+        Returns:
+            bool: 시트 준비 성공 여부
+        """
+        try:
+            if not self.document:
+                logger.error("스프레드시트에 연결되지 않았습니다.")
+                return False
+            
+            sheet_name = "오류"
+            
+            # 시트 존재 여부 확인
+            try:
+                worksheet = self.document.worksheet(sheet_name)
+                logger.debug(f"'{sheet_name}' 시트가 이미 존재합니다.")
+                return True
+            except gspread.exceptions.WorksheetNotFound:
+                # 시트가 없으면 새로 생성
+                logger.info(f"'{sheet_name}' 시트를 생성합니다...")
+                worksheet = self.document.add_worksheet(title=sheet_name, rows=1000, cols=10)
+                
+                # 헤더 추가
+                headers = [
+                    '발생일시', '심각도', '모듈', '오류 유형', '오류 메시지',
+                    '관련 종목', '자동매매 상태', '보유 종목 정보', '해결 상태', '상세 정보'
+                ]
+                worksheet.append_row(headers)
+                
+                # 헤더 스타일 적용
+                worksheet.format('A1:J1', {
+                    'backgroundColor': {'red': 0.2, 'green': 0.2, 'blue': 0.2},
+                    'textFormat': {'bold': True, 'foregroundColor': {'red': 1, 'green': 1, 'blue': 1}},
+                    'horizontalAlignment': 'CENTER'
+                })
+                
+                logger.info(f"'{sheet_name}' 시트를 성공적으로 생성했습니다.")
+                return True
+                
+        except Exception as e:
+            logger.error(f"오류 로그 시트 준비 중 오류 발생: {e}")
+            return False
+    
+    def log_error_to_sheet(self, error_log: Dict) -> bool:
+        """
+        오류 정보를 오류 로그 시트에 기록합니다.
+        
+        Args:
+            error_log: 오류 로그 정보
+                - timestamp: 발생일시 (datetime)
+                - severity: 심각도 (CRITICAL/ERROR/WARNING)
+                - module: 발생 모듈
+                - error_type: 오류 유형
+                - error_message: 오류 메시지
+                - related_stock: 관련 종목 (선택)
+                - trading_status: 자동매매 상태 (선택)
+                - position_info: 보유 종목 정보 (선택)
+                - resolution_status: 해결 상태 (기본: 미해결)
+                - details: 상세 정보 (선택)
+                
+        Returns:
+            bool: 기록 성공 여부
+        """
+        try:
+            if not self.ensure_error_log_sheet():
+                return False
+            
+            worksheet = self.document.worksheet("오류")
+            
+            # 기본값 설정
+            from datetime import datetime
+            
+            timestamp = error_log.get('timestamp', datetime.now())
+            
+            row_data = [
+                timestamp.strftime('%Y-%m-%d %H:%M:%S'),  # 발생일시
+                error_log.get('severity', 'ERROR'),  # 심각도
+                error_log.get('module', '알 수 없음'),  # 모듈
+                error_log.get('error_type', '알 수 없음'),  # 오류 유형
+                error_log.get('error_message', ''),  # 오류 메시지
+                error_log.get('related_stock', '해당없음'),  # 관련 종목
+                error_log.get('trading_status', '알 수 없음'),  # 자동매매 상태
+                error_log.get('position_info', '없음'),  # 보유 종목 정보
+                error_log.get('resolution_status', '미해결'),  # 해결 상태
+                error_log.get('details', '')  # 상세 정보
+            ]
+            
+            worksheet.append_row(row_data, value_input_option='USER_ENTERED')
+            logger.info(f"오류 로그 시트에 기록 완료: {error_log.get('error_type', 'Unknown')}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"오류 로그 시트 기록 중 오류 발생: {e}")
+            # 오류 기록 중 오류가 발생해도 시스템이 멈추면 안 됨
+            return False

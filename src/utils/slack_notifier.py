@@ -851,3 +851,119 @@ class SlackNotifier:
         except Exception as e:
             logger.error(f"매도 체결 알림 전송 중 오류 발생: {e}")
             return False
+    
+    def send_system_startup_notification(self, balance_info: Optional[Dict] = None, 
+                                        position_info: Optional[Dict] = None,
+                                        trading_enabled: bool = False) -> bool:
+        """
+        시스템 시작 알림을 슬랙으로 전송합니다.
+        
+        Args:
+            balance_info: 계좌 잔고 정보 (예수금 등)
+            position_info: 보유 포지션 정보
+            trading_enabled: 자동매매 활성화 여부
+            
+        Returns:
+            bool: 전송 성공 여부
+        """
+        if not self.is_enabled:
+            return True
+        
+        try:
+            import platform
+            import pytz
+            
+            # 한국 시간으로 변환
+            kst = pytz.timezone('Asia/Seoul')
+            now_kst = datetime.now(kst)
+            
+            # 기본 필드
+            fields = [
+                {
+                    "title": "🕐 시작 시각 (KST)",
+                    "value": now_kst.strftime("%Y-%m-%d %H:%M:%S"),
+                    "short": True
+                },
+                {
+                    "title": "💻 실행 환경",
+                    "value": platform.system(),
+                    "short": True
+                }
+            ]
+            
+            # 자동매매 상태
+            if trading_enabled:
+                fields.append({
+                    "title": "🤖 자동매매",
+                    "value": "✅ 활성화 (실거래 모드)",
+                    "short": False
+                })
+                
+                # 예수금 정보
+                if balance_info:
+                    available = balance_info.get('available_amount', 0)
+                    total = balance_info.get('total_balance', 0)
+                    
+                    fields.extend([
+                        {
+                            "title": "💰 예수금 (주문가능금액)",
+                            "value": f"{available:,.0f}원",
+                            "short": True
+                        },
+                        {
+                            "title": "💵 총 평가금액",
+                            "value": f"{total:,.0f}원",
+                            "short": True
+                        }
+                    ])
+                else:
+                    fields.append({
+                        "title": "💰 예수금",
+                        "value": "조회 실패 (키움 API 확인 필요)",
+                        "short": False
+                    })
+                
+                # 보유 포지션 정보
+                if position_info:
+                    fields.append({
+                        "title": "📊 보유 종목",
+                        "value": f"{position_info['stock_name']}({position_info['stock_code']}) - {position_info['quantity']:,}주\n현재가: {position_info['current_price']:,.0f}원 | 수익률: {position_info['profit_rate']:+.2f}%",
+                        "short": False
+                    })
+                else:
+                    fields.append({
+                        "title": "📊 보유 종목",
+                        "value": "없음",
+                        "short": False
+                    })
+            else:
+                fields.append({
+                    "title": "🤖 자동매매",
+                    "value": "⚠️ 비활성화 (공시 모니터링만 실행)",
+                    "short": False
+                })
+            
+            # 메시지 색상 결정
+            color = "#2eb886" if trading_enabled else "#ffa500"  # 초록 또는 주황
+            
+            payload = {
+                "text": "🚀 *자동매매 시스템 시작*",
+                "attachments": [
+                    {
+                        "color": color,
+                        "text": "시스템이 정상적으로 시작되었습니다. 모니터링을 시작합니다.",
+                        "fields": fields,
+                        "footer": "자동매매 시스템",
+                        "ts": int(datetime.now().timestamp())
+                    }
+                ],
+                "username": "시스템 알림 봇",
+                "icon_emoji": ":rocket:"
+            }
+            
+            logger.info("시스템 시작 알림 전송 중...")
+            return self._send_to_slack(payload)
+            
+        except Exception as e:
+            logger.error(f"시스템 시작 알림 전송 중 오류 발생: {e}")
+            return False

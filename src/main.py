@@ -96,6 +96,9 @@ class DartScrapingSystem:
             
             logger.info("✅ 시장 개장 중이므로 스크래핑을 진행합니다.")
             
+            # 시스템 시작 알림 전송
+            self._send_startup_notification()
+            
             # 1단계: 구글 스프레드시트 연결
             if not self._connect_to_sheets():
                 return False
@@ -336,15 +339,64 @@ class DartScrapingSystem:
         
         return saved_contracts_count
     
+    def _send_startup_notification(self):
+        """
+        시스템 시작 알림을 슬랙으로 전송합니다.
+        """
+        try:
+            logger.info("시스템 시작 알림을 준비 중...")
+            
+            balance_info = None
+            position_info = None
+            trading_enabled = False
+            
+            # 자동매매 활성화 여부 확인
+            if hasattr(self, 'auto_trading') and self.auto_trading.trading_enabled:
+                trading_enabled = True
+                
+                # 예수금 조회 시도
+                try:
+                    balance_info = self.auto_trading.kiwoom_client.get_balance()
+                    if balance_info:
+                        logger.info(f"예수금 조회 성공: {balance_info['available_amount']:,.0f}원")
+                except Exception as e:
+                    logger.warning(f"예수금 조회 실패: {e}")
+                
+                # 보유 포지션 조회 시도
+                try:
+                    position_info = self.auto_trading.position_mgr.get_current_position()
+                    if position_info:
+                        logger.info(f"보유 종목: {position_info['stock_name']}({position_info['stock_code']}) {position_info['quantity']}주")
+                    else:
+                        logger.info("보유 종목 없음")
+                except Exception as e:
+                    logger.warning(f"보유 포지션 조회 실패: {e}")
+            else:
+                logger.info("자동매매 비활성화 상태")
+            
+            # 슬랙 알림 전송
+            self.slack_notifier.send_system_startup_notification(
+                balance_info=balance_info,
+                position_info=position_info,
+                trading_enabled=trading_enabled
+            )
+            
+            logger.info("✅ 시스템 시작 알림 전송 완료")
+            
+        except Exception as e:
+            logger.error(f"시스템 시작 알림 전송 중 오류 발생: {e}")
+            # 알림 전송 실패는 시스템 실행을 막지 않음
+    
     def _handle_critical_error(self, error_title: str, exception: Exception):
         """
-        치명적 오류를 처리하고 상세 정보를 슬랙으로 전송합니다.
+        치명적 오류를 처리하고 상세 정보를 슬랙으로 전송하며 시트에 기록합니다.
         
         Args:
             error_title: 오류 제목
             exception: 발생한 예외
         """
         import traceback
+        from datetime import datetime
         
         logger.error(f"치명적 오류 발생: {error_title}")
         logger.error(f"예외 타입: {type(exception).__name__}")
@@ -361,10 +413,16 @@ class DartScrapingSystem:
             "📍 발생 위치": error_title,
         }
         
+        # 시트 기록용 변수 초기화
+        trading_status = "비활성화"
+        position_info = "없음"
+        related_stock = "해당없음"
+        
         # 자동매매 시스템 상태 추가
         try:
             if hasattr(self, 'auto_trading') and self.auto_trading.trading_enabled:
                 error_details["🤖 자동매매 상태"] = "활성화됨"
+                trading_status = "활성화"
                 
                 # 예수금 조회 시도
                 try:
@@ -378,15 +436,20 @@ class DartScrapingSystem:
                 try:
                     position = self.auto_trading.position_mgr.get_current_position()
                     if position:
-                        error_details["📊 보유 종목"] = f"{position['stock_name']}({position['stock_code']}) {position['quantity']}주"
+                        position_text = f"{position['stock_name']}({position['stock_code']}) {position['quantity']}주"
+                        error_details["📊 보유 종목"] = position_text
+                        position_info = position_text
+                        related_stock = f"{position['stock_name']}({position['stock_code']})"
                     else:
                         error_details["📊 보유 종목"] = "없음"
                 except:
                     error_details["📊 보유 종목"] = "조회 실패"
+                    position_info = "조회 실패"
             else:
                 error_details["🤖 자동매매 상태"] = "비활성화됨"
         except Exception as e:
             error_details["🤖 자동매매 상태"] = f"상태 확인 실패: {str(e)}"
+            trading_status = f"확인 실패: {str(e)}"
         
         # 슬랙으로 치명적 오류 알림 전송
         try:
@@ -398,6 +461,37 @@ class DartScrapingSystem:
             logger.info("치명적 오류 슬랙 알림 전송 완료")
         except Exception as e:
             logger.error(f"치명적 오류 알림 전송 실패: {e}")
+        
+        # 구글 시트에 오류 로그 기록
+        try:
+            # 상세 정보 텍스트 생성
+            details_text = f"발생 위치: {error_title}\n"
+            details_text += f"예외 메시지: {str(exception)}\n"
+            if stack_trace:
+                # 스택 트레이스가 너무 길면 마지막 500자만
+                if len(stack_trace) > 500:
+                    details_text += f"스택 트레이스: ...\n{stack_trace[-500:]}"
+                else:
+                    details_text += f"스택 트레이스:\n{stack_trace}"
+            
+            error_log = {
+                'timestamp': datetime.now(),
+                'severity': 'CRITICAL',
+                'module': '시스템 전체',
+                'error_type': type(exception).__name__,
+                'error_message': str(exception)[:200],  # 메시지는 200자로 제한
+                'related_stock': related_stock,
+                'trading_status': trading_status,
+                'position_info': position_info,
+                'resolution_status': '미해결',
+                'details': details_text[:1000]  # 상세 정보는 1000자로 제한
+            }
+            
+            self.google_client.log_error_to_sheet(error_log)
+            logger.info("오류 로그 시트 기록 완료")
+        except Exception as e:
+            logger.error(f"오류 로그 시트 기록 실패: {e}")
+            # 시트 기록 실패는 시스템을 중단시키지 않음
 
 
 def acquire_lock(lock_file: str) -> bool:
