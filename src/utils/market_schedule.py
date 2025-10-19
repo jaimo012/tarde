@@ -282,3 +282,33 @@ def get_market_status() -> str:
 def should_run_dart_scraping() -> Tuple[bool, str]:
     """DART 스크래핑 실행 여부를 판단하는 함수"""
     return market_schedule.should_run_scraping()
+
+
+def is_trading_hours(allow_buy: bool = False) -> bool:
+    """
+    현재 시간이 거래 가능 시간인지 확인합니다.
+    
+    Args:
+        allow_buy: True면 매수 가능 시간(09:00~15:20), False면 매도 가능 시간(09:00~15:30)
+        
+    Returns:
+        bool: 거래 가능 시간 여부
+    """
+    now = datetime.now(KoreanMarketSchedule.KST)
+    current_time = now.time()
+    
+    # 거래일인지 확인
+    if not market_schedule.is_trading_day():
+        return False
+    
+    # 시간 확인
+    regular_open = time(9, 0)
+    
+    if allow_buy:
+        # 매수는 15:20까지만 가능 (마감 10분 전)
+        buy_close = time(15, 20)
+        return regular_open <= current_time <= buy_close
+    else:
+        # 매도는 15:30까지 가능
+        regular_close = time(15, 30)
+        return regular_open <= current_time <= regular_close

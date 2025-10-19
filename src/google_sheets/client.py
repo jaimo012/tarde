@@ -287,3 +287,195 @@ class GoogleSheetsClient:
             stats[sheet_name] = len(df) if df is not None else 0
         
         return stats
+    
+    def ensure_trading_history_sheet(self) -> bool:
+        """
+        거래내역 시트가 존재하는지 확인하고, 없으면 생성합니다.
+        
+        Returns:
+            bool: 시트 준비 성공 여부
+        """
+        try:
+            if not self.document:
+                logger.error("스프레드시트에 연결되지 않았습니다.")
+                return False
+            
+            sheet_name = "거래내역"
+            
+            # 시트 존재 여부 확인
+            try:
+                worksheet = self.document.worksheet(sheet_name)
+                logger.debug(f"'{sheet_name}' 시트가 이미 존재합니다.")
+                return True
+            except gspread.exceptions.WorksheetNotFound:
+                # 시트가 없으면 새로 생성
+                logger.info(f"'{sheet_name}' 시트를 생성합니다...")
+                worksheet = self.document.add_worksheet(title=sheet_name, rows=1000, cols=15)
+                
+                # 헤더 추가
+                headers = [
+                    '종목코드', '종목명', '매수일시', '매수가', '매수수량', '매수금액',
+                    '매도일시', '매도가', '매도수량', '매도금액', '수익금', '수익률(%)', 
+                    '상태', '사유', '주문번호'
+                ]
+                worksheet.append_row(headers)
+                
+                logger.info(f"'{sheet_name}' 시트를 성공적으로 생성했습니다.")
+                return True
+                
+        except Exception as e:
+            logger.error(f"거래내역 시트 준비 중 오류 발생: {e}")
+            return False
+    
+    def save_buy_transaction(self, trade_info: Dict) -> bool:
+        """
+        매수 거래 정보를 거래내역 시트에 저장합니다.
+        
+        Args:
+            trade_info: 거래 정보
+                - stock_code: 종목코드
+                - stock_name: 종목명
+                - buy_time: 매수일시
+                - executed_price: 체결가격
+                - quantity: 체결수량
+                - executed_amount: 체결금액
+                - order_number: 주문번호
+                
+        Returns:
+            bool: 저장 성공 여부
+        """
+        try:
+            if not self.ensure_trading_history_sheet():
+                return False
+            
+            worksheet = self.document.worksheet("거래내역")
+            
+            from decimal import Decimal
+            buy_price = trade_info['executed_price']
+            quantity = trade_info['quantity']
+            buy_amount = trade_info['executed_amount']
+            
+            row_data = [
+                trade_info['stock_code'],
+                trade_info['stock_name'],
+                trade_info['buy_time'].strftime('%Y-%m-%d %H:%M:%S'),
+                float(buy_price),
+                quantity,
+                float(buy_amount),
+                '',  # 매도일시 (아직 매도 안함)
+                '',  # 매도가
+                '',  # 매도수량
+                '',  # 매도금액
+                '',  # 수익금
+                '',  # 수익률
+                '보유중',
+                '매수 체결',
+                trade_info.get('order_number', '')
+            ]
+            
+            worksheet.append_row(row_data, value_input_option='USER_ENTERED')
+            logger.info(f"매수 거래 정보 저장 완료: {trade_info['stock_name']}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"매수 거래 정보 저장 중 오류 발생: {e}")
+            return False
+    
+    def update_sell_transaction(self, stock_code: str, sell_info: Dict) -> bool:
+        """
+        매도 거래 정보로 거래내역을 업데이트합니다.
+        
+        Args:
+            stock_code: 종목코드
+            sell_info: 매도 정보
+                - sell_time: 매도일시
+                - executed_price: 체결가격
+                - quantity: 체결수량
+                - profit_rate: 수익률
+                - reason: 매도 사유
+                
+        Returns:
+            bool: 업데이트 성공 여부
+        """
+        try:
+            if not self.document:
+                logger.error("스프레드시트에 연결되지 않았습니다.")
+                return False
+            
+            worksheet = self.document.worksheet("거래내역")
+            
+            # 전체 데이터 가져오기
+            all_records = worksheet.get_all_records()
+            
+            # 해당 종목의 보유중 거래 찾기
+            for idx, record in enumerate(all_records):
+                if record['종목코드'] == stock_code and record['상태'] == '보유중':
+                    row_num = idx + 2  # 헤더 행 제외 및 1-based index
+                    
+                    from decimal import Decimal
+                    buy_price = Decimal(str(record['매수가']))
+                    buy_amount = Decimal(str(record['매수금액']))
+                    sell_price = sell_info['executed_price']
+                    quantity = sell_info['quantity']
+                    sell_amount = sell_price * Decimal(str(quantity))
+                    profit = sell_amount - buy_amount
+                    profit_rate = sell_info['profit_rate']
+                    
+                    # 매도 정보 업데이트
+                    worksheet.update_cell(row_num, 7, sell_info['sell_time'].strftime('%Y-%m-%d %H:%M:%S'))  # 매도일시
+                    worksheet.update_cell(row_num, 8, float(sell_price))  # 매도가
+                    worksheet.update_cell(row_num, 9, quantity)  # 매도수량
+                    worksheet.update_cell(row_num, 10, float(sell_amount))  # 매도금액
+                    worksheet.update_cell(row_num, 11, float(profit))  # 수익금
+                    worksheet.update_cell(row_num, 12, float(profit_rate * 100))  # 수익률(%)
+                    worksheet.update_cell(row_num, 13, '매도완료')  # 상태
+                    worksheet.update_cell(row_num, 14, sell_info.get('reason', '매도 체결'))  # 사유
+                    
+                    logger.info(f"매도 거래 정보 업데이트 완료: {record['종목명']} (수익률: {profit_rate*100:.2f}%)")
+                    return True
+            
+            logger.warning(f"보유중인 거래를 찾을 수 없습니다: {stock_code}")
+            return False
+            
+        except Exception as e:
+            logger.error(f"매도 거래 정보 업데이트 중 오류 발생: {e}")
+            return False
+    
+    def get_latest_buy_transaction(self, stock_code: str) -> Optional[Dict]:
+        """
+        특정 종목의 최근 매수 거래 정보를 조회합니다.
+        
+        Args:
+            stock_code: 종목코드
+            
+        Returns:
+            Optional[Dict]: 거래 정보 (없으면 None)
+                - buy_date: 매수일시
+                - buy_price: 매수가
+                - quantity: 수량
+        """
+        try:
+            if not self.document:
+                logger.error("스프레드시트에 연결되지 않았습니다.")
+                return None
+            
+            worksheet = self.document.worksheet("거래내역")
+            all_records = worksheet.get_all_records()
+            
+            # 해당 종목의 보유중 거래 찾기
+            for record in reversed(all_records):  # 최신 거래부터 확인
+                if record['종목코드'] == stock_code and record['상태'] == '보유중':
+                    from datetime import datetime
+                    from decimal import Decimal
+                    
+                    return {
+                        'buy_date': datetime.strptime(record['매수일시'], '%Y-%m-%d %H:%M:%S'),
+                        'buy_price': Decimal(str(record['매수가'])),
+                        'quantity': int(record['매수수량'])
+                    }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"매수 거래 정보 조회 중 오류 발생: {e}")
+            return None

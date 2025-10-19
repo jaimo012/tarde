@@ -141,6 +141,29 @@ TARGET_INDUSTRIES = {
     '32605': '영상 및 음향기기 제조업',
 }
 
+# 키움증권 API 설정
+KIWOOM_APP_KEY = os.getenv('KIWOOM_APP_KEY')
+KIWOOM_APP_SECRET = os.getenv('KIWOOM_APP_SECRET')
+KIWOOM_ACCOUNT_NUMBER = os.getenv('KIWOOM_ACCOUNT_NUMBER')
+
+# 거래 모드 설정
+TRADING_MODE = os.getenv('TRADING_MODE', 'LIVE')  # LIVE or DRY_RUN
+
+# 거래 설정 (Decimal 타입 사용)
+from decimal import Decimal
+
+TRADING_CONFIG = {
+    'profit_target': Decimal('0.03'),       # 3% 익절 목표
+    'stop_loss_5days': Decimal('-0.01'),    # -1% 손절 (5일 경과 시)
+    'hold_period_soft': 5,                   # 5일 경과 시 조건부 매도
+    'hold_period_hard': 10,                  # 10일 경과 시 무조건 매도
+    'min_score': 8,                          # 최소 투자 점수
+    'commission_rate': Decimal('0.00018'),   # 수수료 0.018%
+    'monitoring_interval': 300,              # 공시 모니터링 주기 (5분)
+    'position_check_interval': 600,          # 포지션 체크 주기 (10분)
+    'min_balance': Decimal('10000'),         # 최소 예수금 (1만원)
+}
+
 # 에러 처리 설정
 ERROR_HANDLING_CONFIG = {
     'max_retries': 3,

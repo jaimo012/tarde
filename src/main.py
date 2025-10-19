@@ -1,19 +1,25 @@
 """
-DART 공시 스크래핑 및 구글 시트 저장 자동화 메인 실행 모듈
+DART 공시 스크래핑 및 자동매매 시스템 메인 실행 모듈
 
 이 모듈은 전체 시스템의 실행 흐름을 관리합니다.
+- 공시 모니터링 및 분석
+- 자동매매 실행 (조건 충족 시)
+- 보유 포지션 관리
 """
 
 import time
+import os
 from typing import List, Dict
 from loguru import logger
+from datetime import datetime
 
-from config.settings import LOGGING_CONFIG, REQUIRED_FIELDS, SLACK_WEBHOOK_URL
+from config.settings import LOGGING_CONFIG, REQUIRED_FIELDS, SLACK_WEBHOOK_URL, TRADING_CONFIG
 from src.dart_api.client import DartApiClient
 from src.dart_api.analyzer import ReportAnalyzer
 from src.google_sheets.client import GoogleSheetsClient
 from src.utils.slack_notifier import SlackNotifier
-from src.utils.market_schedule import should_run_dart_scraping, get_market_status
+from src.utils.market_schedule import should_run_dart_scraping, get_market_status, is_market_open
+from src.trading.auto_trading_system import AutoTradingSystem
 
 
 class DartScrapingSystem:
@@ -26,10 +32,16 @@ class DartScrapingSystem:
         self.sheets_client = GoogleSheetsClient()
         self.slack_notifier = SlackNotifier(SLACK_WEBHOOK_URL)
         
+        # 자동매매 시스템 초기화
+        self.auto_trading = AutoTradingSystem(self.sheets_client, self.slack_notifier)
+        
         # 로깅 설정
         self._setup_logging()
         
-        logger.info("DART 스크래핑 시스템이 초기화되었습니다.")
+        # 중복 실행 방지 락
+        self.lock_file = "logs/trading.lock"
+        
+        logger.info("DART 스크래핑 및 자동매매 시스템이 초기화되었습니다.")
     
     def _setup_logging(self):
         """로깅 설정을 초기화합니다."""
@@ -93,6 +105,15 @@ class DartScrapingSystem:
                     "info"
                 )
             # 신규 계약이 없으면 슬랙 알림 전송하지 않음 (스팸 방지)
+            
+            # 5단계: 보유 포지션 관리 (자동매매 활성화 시)
+            if is_market_open():
+                logger.info("보유 포지션 관리를 시작합니다...")
+                try:
+                    self.auto_trading.manage_positions()
+                except Exception as e:
+                    logger.error(f"포지션 관리 중 오류 발생: {e}")
+                    # 포지션 관리 실패는 시스템을 중단시키지 않음
             
             return True
             
@@ -263,6 +284,14 @@ class DartScrapingSystem:
                     # 슬랙 알림 전송
                     self.slack_notifier.send_new_contract_notification(new_contracts)
                     
+                    # 자동매매 처리: 각 신규 계약에 대해 매수 조건 확인
+                    for contract in new_contracts:
+                        try:
+                            self.auto_trading.process_new_contract(contract)
+                        except Exception as e:
+                            logger.error(f"자동매매 처리 중 오류 발생: {e}")
+                            # 자동매매 실패는 시스템을 중단시키지 않음
+                    
                 else:
                     logger.error(f"   ❌ '{corp_name}': 계약 데이터 저장 실패")
                     # 데이터 저장 실패는 중요한 오류이므로 슬랙 알림
@@ -294,17 +323,80 @@ class DartScrapingSystem:
         return saved_contracts_count
 
 
+def acquire_lock(lock_file: str) -> bool:
+    """
+    프로세스 락을 획득합니다 (중복 실행 방지).
+    
+    Args:
+        lock_file: 락 파일 경로
+        
+    Returns:
+        bool: 락 획득 성공 여부
+    """
+    try:
+        # 락 파일 디렉토리 생성
+        os.makedirs(os.path.dirname(lock_file), exist_ok=True)
+        
+        # 락 파일이 이미 존재하는지 확인
+        if os.path.exists(lock_file):
+            # 락 파일의 생성 시간 확인 (10분 이상 오래된 경우 제거)
+            file_age = time.time() - os.path.getmtime(lock_file)
+            if file_age > 600:  # 10분
+                logger.warning(f"오래된 락 파일 발견 ({file_age:.0f}초 전). 제거합니다.")
+                os.remove(lock_file)
+            else:
+                logger.warning("다른 프로세스가 실행 중입니다. 중복 실행을 방지합니다.")
+                return False
+        
+        # 락 파일 생성
+        with open(lock_file, 'w') as f:
+            f.write(f"{os.getpid()}\n{datetime.now().isoformat()}")
+        
+        logger.info(f"프로세스 락 획득: {lock_file}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"락 획득 중 오류 발생: {e}")
+        return False
+
+
+def release_lock(lock_file: str):
+    """
+    프로세스 락을 해제합니다.
+    
+    Args:
+        lock_file: 락 파일 경로
+    """
+    try:
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+            logger.info(f"프로세스 락 해제: {lock_file}")
+    except Exception as e:
+        logger.error(f"락 해제 중 오류 발생: {e}")
+
+
 def main():
     """메인 실행 함수"""
-    system = DartScrapingSystem()
-    success = system.run()
+    lock_file = "logs/trading.lock"
     
-    if success:
-        logger.info("✅ 시스템이 성공적으로 완료되었습니다.")
-        return 0
-    else:
-        logger.error("❌ 시스템 실행 중 오류가 발생했습니다.")
+    # 중복 실행 방지
+    if not acquire_lock(lock_file):
         return 1
+    
+    try:
+        system = DartScrapingSystem()
+        success = system.run()
+        
+        if success:
+            logger.info("✅ 시스템이 성공적으로 완료되었습니다.")
+            return 0
+        else:
+            logger.error("❌ 시스템 실행 중 오류가 발생했습니다.")
+            return 1
+    
+    finally:
+        # 락 해제
+        release_lock(lock_file)
 
 
 if __name__ == '__main__':

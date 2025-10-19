@@ -1,14 +1,30 @@
-# 📊 DART 공시 스크래핑 및 구글 시트 자동화 시스템
+# 📊 DART 공시 기반 자동매매 시스템
 
-이 시스템은 DART(전자공시시스템)에서 단일판매공급계약 관련 공시를 자동으로 수집하고, 구글 스프레드시트에 정리하는 파이썬 애플리케이션입니다.
+이 시스템은 DART(전자공시시스템)에서 단일판매공급계약 관련 공시를 자동으로 수집하고, 투자 가치가 높은 종목을 자동으로 매매하는 파이썬 애플리케이션입니다.
+
+## ⚠️ 중요 공지
+
+**본 시스템은 실제 자금을 사용하는 자동매매 시스템입니다.**
+- 사용 전 반드시 `RISK_DISCLOSURE.md`를 읽어주시기 바랍니다
+- 투자 손실 가능성이 있으며, 모든 책임은 사용자에게 있습니다
+- 자동매매 사용 시 지속적인 모니터링이 필요합니다
 
 ## 🎯 주요 기능
 
+### 공시 분석 기능
 1. **구글 스프레드시트 연동**: 분석 대상 회사 목록을 자동으로 가져오고 결과를 저장
 2. **DART API 연동**: 공시 검색 및 보고서 다운로드 자동화
 3. **보고서 분석**: HTML/XML 보고서에서 계약 정보 자동 추출
 4. **중복 제거**: 이미 처리된 보고서는 자동으로 건너뛰기
 5. **데이터 분류**: 완전한 데이터는 '계약' 시트에, 불완전한 데이터는 '분석제외' 시트에 자동 분류
+
+### 자동매매 기능 ⭐ NEW!
+6. **투자 점수 분석**: 시장지수, 시가총액, 계약 비율, 거래량 등을 종합 분석 (0-10점)
+7. **자동 매수**: 8점 이상 당일 공시 종목 자동 매수 (예수금 100%)
+8. **자동 매도**: 3% 익절, 보유기간별 손절 전략
+9. **포지션 관리**: 보유 종목 실시간 모니터링 및 자동 매도
+10. **거래내역 기록**: 모든 매매 내역을 구글 시트에 자동 저장
+11. **슬랙 알림**: 매수/매도 체결 시 실시간 알림
 
 ## 🚀 시작하기
 
@@ -51,6 +67,12 @@ pip install requests pandas numpy python-dateutil python-dotenv loguru fastapi u
    ENVIRONMENT=development
    LOG_LEVEL=DEBUG
    SLACK_WEBHOOK=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+   
+   # 자동매매 설정 (선택사항)
+   KIWOOM_APP_KEY=your_kiwoom_app_key
+   KIWOOM_APP_SECRET=your_kiwoom_app_secret
+   KIWOOM_ACCOUNT_NUMBER=your_account_number
+   TRADING_MODE=LIVE  # LIVE 또는 DRY_RUN
    ```
 
 #### 클라우드타입 배포환경
@@ -65,6 +87,12 @@ pip install requests pandas numpy python-dateutil python-dotenv loguru fastapi u
 
 선택사항 환경변수:
 - `SLACK_WEBHOOK`: 슬랙 웹훅 URL (신규 계약 알림용)
+
+자동매매 환경변수 (선택사항):
+- `KIWOOM_APP_KEY`: 키움증권 앱 키
+- `KIWOOM_APP_SECRET`: 키움증권 앱 시크릿
+- `KIWOOM_ACCOUNT_NUMBER`: 계좌번호
+- `TRADING_MODE`: LIVE (기본값, 실제 거래) 또는 DRY_RUN (시뮬레이션)
 
 ### 3. 실행
 
@@ -82,11 +110,17 @@ trade/
 │   │   └── analyzer.py           # 보고서 분석기
 │   ├── google_sheets/            # 구글 시트 연동 모듈
 │   │   └── client.py             # 스프레드시트 클라이언트
+│   ├── trading/                  # ⭐ NEW: 자동매매 모듈
+│   │   ├── kiwoom_client.py      # 키움증권 API 클라이언트
+│   │   ├── order_manager.py      # 주문 관리 (매수/매도)
+│   │   ├── position_manager.py   # 포지션 관리 (보유 종목)
+│   │   ├── trading_strategy.py   # 거래 전략
+│   │   └── auto_trading_system.py # 자동매매 통합 시스템
 │   ├── utils/                    # 유틸리티 함수
 │   │   ├── slack_notifier.py     # 슬랙 알림 모듈
 │   │   ├── market_schedule.py    # 시장 스케줄 관리
 │   │   └── stock_analyzer.py     # 주식 분석 모듈
-│   └── main.py                   # 메인 실행 로직
+│   └── main.py                   # 메인 실행 로직 (공시+자동매매)
 ├── config/                       # 설정 파일
 │   └── settings.py               # 시스템 설정
 ├── logs/                         # 로그 파일
@@ -125,6 +159,10 @@ trade/
 #### 3. 분석제외 시트
 - **목적**: 불완전한 데이터 저장 (추후 수동 보완용)
 - **컬럼**: 계약 시트와 동일
+
+#### 4. 거래내역 시트 ⭐ NEW!
+- **목적**: 자동매매 거래 내역 기록
+- **컬럼**: 종목코드, 종목명, 매수일시, 매수가, 매수수량, 매수금액, 매도일시, 매도가, 매도수량, 매도금액, 수익금, 수익률(%), 상태, 사유, 주문번호
 
 ### 필수 데이터 필드
 시스템은 다음 필드가 모두 추출되어야 '계약' 시트에 저장합니다:
@@ -246,6 +284,17 @@ trade/
 
 ## 📋 개발 이력
 
+### v4.0.0 (2025-10-19) - 자동매매 시스템 구축 ⭐ MAJOR UPDATE
+- 🤖 **키움증권 REST API 연동**: OAuth 2.0 인증, 예수금/잔고 조회, 주문 실행
+- 💰 **자동 매수 시스템**: 8점 이상 당일 공시 종목 자동 매수 (예수금 100%)
+- 📈 **자동 매도 시스템**: 3% 익절, 5일/10일 기간별 손절 전략
+- 📊 **포지션 관리**: 보유 종목 실시간 모니터링 및 자동 매도
+- 💾 **거래내역 기록**: 구글 시트 "거래내역" 시트 자동 생성 및 관리
+- 🔔 **거래 알림**: 매수/매도 시작/체결 슬랙 실시간 알림
+- 🔒 **안전장치**: API 호출 제한 준수, 중복 실행 방지, 금액 정확성 (Decimal)
+- 📚 **문서화**: TRADING_GUIDE.md, RISK_DISCLOSURE.md 추가
+- ⚠️ **위험 관리**: 한 종목 올인, 보유 기간 제한, 시장 시간 제한
+
 ### v3.1.0 (2025-10-18) - 슬랙 알림 강화 및 차트 시각화
 - 📊 **주식 차트 자동 생성**: 최근 20일 일봉 + 5일/20일 이동평균선 캔들스틱 차트
 - 🎨 **슬랙 메시지 구조 개선**: 종목정보/투자정보/분석의견 3개 섹션으로 명확하게 구분
@@ -300,5 +349,11 @@ trade/
 
 **🔗 관련 링크**
 - [DART 오픈API 가이드](https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019001)
+- [키움증권 OpenAPI 가이드](https://openapi.kiwoom.com/guide/apiguide)
 - [구글 스프레드시트 API 문서](https://developers.google.com/sheets/api)
 - [pykrx 라이브러리 문서](https://github.com/sharebook-kr/pykrx)
+
+**📚 자동매매 관련 문서**
+- [TRADING_GUIDE.md](TRADING_GUIDE.md): 자동매매 시스템 상세 가이드
+- [RISK_DISCLOSURE.md](RISK_DISCLOSURE.md): 투자 위험 고지서 (필독)
+- [KIWOOM_API_SETUP_GUIDE.md](KIWOOM_API_SETUP_GUIDE.md): 키움증권 API 설정 가이드

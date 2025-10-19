@@ -472,3 +472,283 @@ class SlackNotifier:
         }
         
         return self._send_to_slack(payload)
+    
+    def send_buy_start_notification(self, stock_name: str, stock_code: str, 
+                                    score: int, disclosure_info: Dict) -> bool:
+        """
+        매수 시작 알림을 전송합니다.
+        
+        Args:
+            stock_name: 종목명
+            stock_code: 종목코드
+            score: 투자 점수
+            disclosure_info: 공시 정보
+            
+        Returns:
+            bool: 전송 성공 여부
+        """
+        if not self.is_enabled:
+            return True
+        
+        try:
+            contract_amount = disclosure_info.get('계약금액', '정보 없음')
+            contract_party = disclosure_info.get('계약상대방', '정보 없음')
+            
+            payload = {
+                "text": f"🔵 *매수 거래 시작!*",
+                "attachments": [
+                    {
+                        "color": "#0066CC",
+                        "fields": [
+                            {
+                                "title": "종목",
+                                "value": f"{stock_name} ({stock_code})",
+                                "short": True
+                            },
+                            {
+                                "title": "투자 점수",
+                                "value": f"⭐ {score}/10점",
+                                "short": True
+                            },
+                            {
+                                "title": "계약금액",
+                                "value": contract_amount,
+                                "short": True
+                            },
+                            {
+                                "title": "계약상대방",
+                                "value": contract_party,
+                                "short": True
+                            }
+                        ],
+                        "footer": "자동매매 시스템",
+                        "ts": int(datetime.now().timestamp())
+                    }
+                ],
+                "username": "자동매매 봇",
+                "icon_emoji": ":chart_with_upwards_trend:"
+            }
+            
+            return self._send_to_slack(payload)
+            
+        except Exception as e:
+            logger.error(f"매수 시작 알림 전송 중 오류 발생: {e}")
+            return False
+    
+    def send_buy_execution_notification(self, stock_name: str, stock_code: str,
+                                       quantity: int, price: float, amount: float) -> bool:
+        """
+        매수 체결 알림을 전송합니다.
+        
+        Args:
+            stock_name: 종목명
+            stock_code: 종목코드
+            quantity: 체결 수량
+            price: 체결 가격
+            amount: 체결 금액
+            
+        Returns:
+            bool: 전송 성공 여부
+        """
+        if not self.is_enabled:
+            return True
+        
+        try:
+            payload = {
+                "text": f"✅ *매수 체결 완료!*",
+                "attachments": [
+                    {
+                        "color": "#00CC00",
+                        "fields": [
+                            {
+                                "title": "종목",
+                                "value": f"{stock_name} ({stock_code})",
+                                "short": False
+                            },
+                            {
+                                "title": "체결가",
+                                "value": f"{price:,.0f}원",
+                                "short": True
+                            },
+                            {
+                                "title": "수량",
+                                "value": f"{quantity:,}주",
+                                "short": True
+                            },
+                            {
+                                "title": "총 금액",
+                                "value": f"{amount:,.0f}원",
+                                "short": False
+                            }
+                        ],
+                        "footer": "자동매매 시스템",
+                        "ts": int(datetime.now().timestamp())
+                    }
+                ],
+                "username": "자동매매 봇",
+                "icon_emoji": ":money_with_wings:"
+            }
+            
+            return self._send_to_slack(payload)
+            
+        except Exception as e:
+            logger.error(f"매수 체결 알림 전송 중 오류 발생: {e}")
+            return False
+    
+    def send_sell_order_notification(self, stock_name: str, stock_code: str,
+                                     sell_type: str, target_price: Optional[float],
+                                     reason: str) -> bool:
+        """
+        매도 주문 설정 알림을 전송합니다.
+        
+        Args:
+            stock_name: 종목명
+            stock_code: 종목코드
+            sell_type: 매도 유형 ('market' or 'limit')
+            target_price: 목표가 (지정가인 경우)
+            reason: 사유
+            
+        Returns:
+            bool: 전송 성공 여부
+        """
+        if not self.is_enabled:
+            return True
+        
+        try:
+            if sell_type == 'market':
+                order_info = "시장가 매도 주문"
+                price_info = "시장가"
+            else:
+                order_info = "지정가 매도 주문"
+                price_info = f"{target_price:,.0f}원"
+            
+            payload = {
+                "text": f"📝 *매도 주문 설정*",
+                "attachments": [
+                    {
+                        "color": "#FF9500",
+                        "fields": [
+                            {
+                                "title": "종목",
+                                "value": f"{stock_name} ({stock_code})",
+                                "short": False
+                            },
+                            {
+                                "title": "주문 유형",
+                                "value": order_info,
+                                "short": True
+                            },
+                            {
+                                "title": "목표가",
+                                "value": price_info,
+                                "short": True
+                            },
+                            {
+                                "title": "사유",
+                                "value": reason,
+                                "short": False
+                            }
+                        ],
+                        "footer": "자동매매 시스템",
+                        "ts": int(datetime.now().timestamp())
+                    }
+                ],
+                "username": "자동매매 봇",
+                "icon_emoji": ":bell:"
+            }
+            
+            return self._send_to_slack(payload)
+            
+        except Exception as e:
+            logger.error(f"매도 주문 알림 전송 중 오류 발생: {e}")
+            return False
+    
+    def send_sell_execution_notification(self, stock_name: str, stock_code: str,
+                                        quantity: int, buy_price: float, sell_price: float,
+                                        profit_rate: float, reason: str) -> bool:
+        """
+        매도 체결 알림을 전송합니다.
+        
+        Args:
+            stock_name: 종목명
+            stock_code: 종목코드
+            quantity: 체결 수량
+            buy_price: 매수가
+            sell_price: 매도가
+            profit_rate: 수익률 (소수)
+            reason: 매도 사유
+            
+        Returns:
+            bool: 전송 성공 여부
+        """
+        if not self.is_enabled:
+            return True
+        
+        try:
+            buy_amount = buy_price * quantity
+            sell_amount = sell_price * quantity
+            profit = sell_amount - buy_amount
+            
+            # 수익/손실에 따라 색상 결정
+            if profit_rate >= 0:
+                color = "#00CC00"  # 녹색 (수익)
+                emoji = "💰"
+            else:
+                color = "#CC0000"  # 빨간색 (손실)
+                emoji = "📉"
+            
+            payload = {
+                "text": f"{emoji} *매도 체결 완료!*",
+                "attachments": [
+                    {
+                        "color": color,
+                        "fields": [
+                            {
+                                "title": "종목",
+                                "value": f"{stock_name} ({stock_code})",
+                                "short": False
+                            },
+                            {
+                                "title": "매수가",
+                                "value": f"{buy_price:,.0f}원",
+                                "short": True
+                            },
+                            {
+                                "title": "매도가",
+                                "value": f"{sell_price:,.0f}원",
+                                "short": True
+                            },
+                            {
+                                "title": "수량",
+                                "value": f"{quantity:,}주",
+                                "short": True
+                            },
+                            {
+                                "title": "수익률",
+                                "value": f"{profit_rate*100:+.2f}%",
+                                "short": True
+                            },
+                            {
+                                "title": "실현 손익",
+                                "value": f"{profit:+,.0f}원",
+                                "short": False
+                            },
+                            {
+                                "title": "매도 사유",
+                                "value": reason,
+                                "short": False
+                            }
+                        ],
+                        "footer": "자동매매 시스템",
+                        "ts": int(datetime.now().timestamp())
+                    }
+                ],
+                "username": "자동매매 봇",
+                "icon_emoji": ":moneybag:"
+            }
+            
+            return self._send_to_slack(payload)
+            
+        except Exception as e:
+            logger.error(f"매도 체결 알림 전송 중 오류 발생: {e}")
+            return False
