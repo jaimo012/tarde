@@ -85,8 +85,8 @@ class DartScrapingSystem:
             bool: 실행 성공 여부
         """
         try:
-            # 0단계: 시스템 시작 알림 전송 (시장 개장 여부와 무관하게 항상 전송)
-            self._send_startup_notification()
+            # 0단계: 시스템 시작 알림 전송 (비활성화 - 1분마다 실행되므로 알림 불필요)
+            # self._send_startup_notification()
             
             # 1단계: 시장 개장 여부 확인
             should_run, market_status = should_run_dart_scraping()
