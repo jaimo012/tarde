@@ -342,9 +342,23 @@ class DartScrapingSystem:
     def _send_startup_notification(self):
         """
         시스템 시작 알림을 슬랙으로 전송합니다.
+        
+        ⚠️ 하루에 한 번만 알림을 보냅니다 (중복 알림 방지)
         """
         try:
-            logger.info("시스템 시작 알림을 준비 중...")
+            # 1. 시스템 임시 디렉토리 사용 (모든 환경에서 접근 가능)
+            import tempfile
+            temp_dir = tempfile.gettempdir()  # /tmp/ 또는 시스템 임시 디렉토리
+            
+            today = datetime.now().strftime('%Y%m%d')
+            flag_file = os.path.join(temp_dir, f"trading_startup_notified_{today}.flag")
+            
+            # 2. 오늘 이미 알림을 보냈는지 확인
+            if os.path.exists(flag_file):
+                logger.debug(f"✅ 오늘({today}) 이미 시작 알림을 보냈습니다. 스킵합니다. (플래그: {flag_file})")
+                return
+            
+            logger.info(f"📢 시스템 시작 알림을 준비 중... (하루 첫 실행, 플래그: {flag_file})")
             
             balance_info = None
             position_info = None
@@ -396,7 +410,26 @@ class DartScrapingSystem:
                 auth_failed=auth_failed
             )
             
-            logger.info("✅ 시스템 시작 알림 전송 완료")
+            # 3. 플래그 파일 생성 (오늘 알림을 보냈다는 표시)
+            try:
+                with open(flag_file, 'w') as f:
+                    f.write(f"{datetime.now().isoformat()}\n")
+                    f.write(f"Process ID: {os.getpid()}\n")
+                logger.info(f"✅ 시스템 시작 알림 전송 완료 (플래그 생성: {flag_file})")
+            except Exception as e:
+                logger.error(f"❌ 플래그 파일 생성 실패: {e}")
+                logger.error(f"플래그 경로: {flag_file}")
+            
+            # 4. 이전 날짜의 플래그 파일 삭제 (정리)
+            try:
+                import glob
+                search_pattern = os.path.join(temp_dir, "trading_startup_notified_*.flag")
+                for old_flag in glob.glob(search_pattern):
+                    if old_flag != flag_file:
+                        os.remove(old_flag)
+                        logger.debug(f"🗑️ 이전 플래그 파일 삭제: {old_flag}")
+            except Exception as e:
+                logger.warning(f"이전 플래그 파일 삭제 실패 (무시): {e}")
             
         except Exception as e:
             logger.error(f"시스템 시작 알림 전송 중 오류 발생: {e}")
