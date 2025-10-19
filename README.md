@@ -139,6 +139,9 @@ trade/
 ├── CLOUDTYPE_ENV_SETUP.md        # 클라우드타입 배포 가이드
 ├── SLACK_SETUP_GUIDE.md          # 슬랙 웹훅 설정 가이드
 ├── KIWOOM_API_SETUP_GUIDE.md     # 키움증권 API 설정 가이드
+├── INVESTMENT_LOGIC.md           # 📊 투자 판단 로직 상세 가이드 ⭐ NEW!
+├── TRADING_GUIDE.md              # 자동매매 시스템 가이드
+├── RISK_DISCLOSURE.md            # 투자 위험 고지
 ├── env-template.txt              # 환경변수 템플릿 파일
 └── README.md                     # 프로젝트 문서
 

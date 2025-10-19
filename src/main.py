@@ -353,29 +353,35 @@ class DartScrapingSystem:
             # 시장 상태 확인
             should_run, market_status = should_run_dart_scraping()
             
-            # 자동매매 활성화 여부 확인
-            if hasattr(self, 'auto_trading') and self.auto_trading.trading_enabled:
-                trading_enabled = True
+            # 자동매매 시스템 존재 여부 확인
+            if hasattr(self, 'auto_trading'):
+                # 자동매매 활성화 여부
+                trading_enabled = self.auto_trading.trading_enabled
                 
-                # 예수금 조회 시도
+                if trading_enabled:
+                    logger.info("자동매매 활성화 상태 - API 연결 확인 중...")
+                else:
+                    logger.info("자동매매 비활성화 상태 - API 연결 상태만 확인합니다...")
+                
+                # 예수금 조회 시도 (활성화 여부와 무관하게 API 연결 상태 확인)
                 try:
                     balance_info = self.auto_trading.kiwoom_client.get_balance()
                     if balance_info:
-                        logger.info(f"예수금 조회 성공: {balance_info['available_amount']:,.0f}원")
+                        logger.info(f"✅ 키움 API 연결 성공 - 예수금: {balance_info['available_amount']:,.0f}원")
                 except Exception as e:
-                    logger.warning(f"예수금 조회 실패: {e}")
+                    logger.warning(f"⚠️ 키움 API 연결 실패 - 예수금 조회 실패: {e}")
                 
-                # 보유 포지션 조회 시도
+                # 보유 포지션 조회 시도 (활성화 여부와 무관하게 확인)
                 try:
                     position_info = self.auto_trading.position_mgr.get_current_position()
                     if position_info:
-                        logger.info(f"보유 종목: {position_info['stock_name']}({position_info['stock_code']}) {position_info['quantity']}주")
+                        logger.info(f"✅ 보유 종목: {position_info['stock_name']}({position_info['stock_code']}) {position_info['quantity']}주")
                     else:
-                        logger.info("보유 종목 없음")
+                        logger.info("ℹ️ 보유 종목 없음")
                 except Exception as e:
-                    logger.warning(f"보유 포지션 조회 실패: {e}")
+                    logger.warning(f"⚠️ 보유 포지션 조회 실패: {e}")
             else:
-                logger.info("자동매매 비활성화 상태")
+                logger.info("자동매매 시스템이 초기화되지 않았습니다")
             
             # 슬랙 알림 전송
             self.slack_notifier.send_system_startup_notification(

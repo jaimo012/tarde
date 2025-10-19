@@ -911,48 +911,55 @@ class SlackNotifier:
                     "value": "✅ 활성화 (실거래 모드)",
                     "short": False
                 })
-                
-                # 예수금 정보
-                if balance_info:
-                    available = balance_info.get('available_amount', 0)
-                    total = balance_info.get('total_balance', 0)
-                    
-                    fields.extend([
-                        {
-                            "title": "💰 예수금 (주문가능금액)",
-                            "value": f"{available:,.0f}원",
-                            "short": True
-                        },
-                        {
-                            "title": "💵 총 평가금액",
-                            "value": f"{total:,.0f}원",
-                            "short": True
-                        }
-                    ])
-                else:
-                    fields.append({
-                        "title": "💰 예수금",
-                        "value": "조회 실패 (키움 API 확인 필요)",
-                        "short": False
-                    })
-                
-                # 보유 포지션 정보
-                if position_info:
-                    fields.append({
-                        "title": "📊 보유 종목",
-                        "value": f"{position_info['stock_name']}({position_info['stock_code']}) - {position_info['quantity']:,}주\n현재가: {position_info['current_price']:,.0f}원 | 수익률: {position_info['profit_rate']:+.2f}%",
-                        "short": False
-                    })
-                else:
-                    fields.append({
-                        "title": "📊 보유 종목",
-                        "value": "없음",
-                        "short": False
-                    })
             else:
                 fields.append({
                     "title": "🤖 자동매매",
                     "value": "⚠️ 비활성화 (공시 모니터링만 실행)",
+                    "short": False
+                })
+            
+            # 키움 API 연결 상태 (항상 표시)
+            fields.append({
+                "title": "🔌 키움 API 연결",
+                "value": "━━━━━━━━━━━━━━━━━━━━",
+                "short": False
+            })
+            
+            # 예수금 정보 (항상 조회 시도)
+            if balance_info:
+                available = balance_info.get('available_amount', 0)
+                total = balance_info.get('total_balance', 0)
+                
+                fields.extend([
+                    {
+                        "title": "💰 예수금 (주문가능금액)",
+                        "value": f"✅ {available:,.0f}원",
+                        "short": True
+                    },
+                    {
+                        "title": "💵 총 평가금액",
+                        "value": f"✅ {total:,.0f}원",
+                        "short": True
+                    }
+                ])
+            else:
+                fields.append({
+                    "title": "💰 예수금",
+                    "value": "❌ 조회 실패 (키움 API 확인 필요)",
+                    "short": False
+                })
+            
+            # 보유 포지션 정보 (항상 조회 시도)
+            if position_info:
+                fields.append({
+                    "title": "📊 보유 종목",
+                    "value": f"✅ {position_info['stock_name']}({position_info['stock_code']}) - {position_info['quantity']:,}주\n현재가: {position_info['current_price']:,.0f}원 | 수익률: {position_info['profit_rate']:+.2f}%",
+                    "short": False
+                })
+            else:
+                fields.append({
+                    "title": "📊 보유 종목",
+                    "value": "ℹ️ 없음",
                     "short": False
                 })
             
