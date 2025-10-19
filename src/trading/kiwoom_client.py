@@ -576,19 +576,196 @@ class KiwoomAPIClient:
             logger.error(traceback.format_exc())
             return None
     
-    def get_order_status(self, order_number: Optional[str] = None) -> Optional[list]:
+    def get_order_status(self, stock_code: Optional[str] = None, order_number: Optional[str] = None) -> Optional[list]:
         """
-        당일 주문/체결 내역을 조회합니다.
-        키움증권 REST API: TR kt10076 (체결요청) 또는 kt10075 (미체결요청)
-        
-        ⚠️ 현재 미구현 상태입니다. 필요 시 kt10075/kt10076 TR을 사용하여 구현해야 합니다.
+        당일 체결 내역을 조회합니다.
+        키움증권 REST API: TR ka10076 (체결요청)
         
         Args:
+            stock_code: 종목코드 (None인 경우 전체 조회)
             order_number: 특정 주문번호 (None인 경우 전체 조회)
             
         Returns:
-            Optional[list]: 주문/체결 내역 리스트 (현재는 항상 빈 리스트 반환)
+            Optional[list]: 체결 내역 리스트 (실패 시 None)
+                각 체결은 다음 정보를 포함:
+                - order_number: 주문번호
+                - stock_code: 종목코드
+                - stock_name: 종목명
+                - order_type: 주문구분 (매수/매도)
+                - order_price: 주문가격 (Decimal)
+                - order_quantity: 주문수량
+                - executed_price: 체결가 (Decimal)
+                - executed_quantity: 체결량
+                - unexecuted_quantity: 미체결수량
+                - order_status: 주문상태
+                - order_time: 주문시간
         """
-        logger.warning("⚠️ get_order_status()는 현재 미구현 상태입니다. 체결 확인이 필요하면 TR kt10075/kt10076을 구현하세요.")
-        return []
+        try:
+            self._ensure_authenticated()
+            
+            # 키움증권 체결요청 API (TR: ka10076)
+            url = f"{self.base_url}/api/dostk/acnt"
+            headers = self._get_headers(api_id='ka10076')
+            
+            # Body
+            data = {
+                'stk_cd': stock_code if stock_code else '',  # 공백이면 전체
+                'qry_tp': '1' if stock_code else '0',  # 0:전체, 1:종목
+                'sell_tp': '0',  # 0:전체, 1:매도, 2:매수
+                'ord_no': order_number if order_number else '',  # 공백이면 전체
+                'stex_tp': '0'  # 0:통합, 1:KRX, 2:NXT
+            }
+            
+            response = self._request_with_retry('POST', url, headers=headers, json=data)
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                # 키움증권 API 응답 검증
+                if result.get('return_code') != 0:
+                    logger.error(f"체결 조회 실패: {result.get('return_msg', 'Unknown error')}")
+                    return None
+                
+                # cntr 배열 파싱
+                cntr_list = result.get('cntr', [])
+                orders = []
+                
+                for item in cntr_list:
+                    order = {
+                        'order_number': item.get('ord_no', ''),
+                        'stock_code': item.get('stk_cd', ''),
+                        'stock_name': item.get('stk_nm', ''),
+                        'order_type': item.get('io_tp_nm', ''),  # "-매도", "+매수"
+                        'order_price': Decimal(str(item.get('ord_pric', '0'))),
+                        'order_quantity': int(item.get('ord_qty', '0')),
+                        'executed_price': Decimal(str(item.get('cntr_pric', '0'))),
+                        'executed_quantity': int(item.get('cntr_qty', '0')),
+                        'unexecuted_quantity': int(item.get('oso_qty', '0')),
+                        'order_status': item.get('ord_stt', ''),  # "체결"
+                        'order_time': item.get('ord_tm', ''),
+                        'trade_type': item.get('trde_tp', '')  # "보통", "시장가"
+                    }
+                    orders.append(order)
+                
+                logger.info(f"✅ 체결 조회 성공 - {len(orders)}건")
+                return orders
+            else:
+                logger.error(f"체결 조회 API HTTP 오류: {response.status_code}, {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"체결 조회 중 오류 발생: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
+    
+    def get_pending_orders(self, stock_code: Optional[str] = None) -> Optional[list]:
+        """
+        당일 미체결 내역을 조회합니다.
+        키움증권 REST API: TR ka10075 (미체결요청)
+        
+        Args:
+            stock_code: 종목코드 (None인 경우 전체 조회)
+            
+        Returns:
+            Optional[list]: 미체결 내역 리스트 (실패 시 None)
+                각 미체결은 다음 정보를 포함:
+                - order_number: 주문번호
+                - stock_code: 종목코드
+                - stock_name: 종목명
+                - order_type: 주문구분 (매수/매도)
+                - order_price: 주문가격 (Decimal)
+                - order_quantity: 주문수량
+                - unexecuted_quantity: 미체결수량
+                - executed_quantity: 체결량
+                - order_status: 주문상태
+                - order_time: 시간
+        """
+        try:
+            self._ensure_authenticated()
+            
+            # 키움증권 미체결요청 API (TR: ka10075)
+            url = f"{self.base_url}/api/dostk/acnt"
+            headers = self._get_headers(api_id='ka10075')
+            
+            # Body
+            data = {
+                'all_stk_tp': '1' if stock_code else '0',  # 0:전체, 1:종목
+                'trde_tp': '0',  # 0:전체, 1:매도, 2:매수
+                'stk_cd': stock_code if stock_code else '',  # 공백이면 전체
+                'stex_tp': '0'  # 0:통합, 1:KRX, 2:NXT
+            }
+            
+            response = self._request_with_retry('POST', url, headers=headers, json=data)
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                # 키움증권 API 응답 검증
+                if result.get('return_code') != 0:
+                    logger.error(f"미체결 조회 실패: {result.get('return_msg', 'Unknown error')}")
+                    return None
+                
+                # oso 배열 파싱
+                oso_list = result.get('oso', [])
+                orders = []
+                
+                for item in oso_list:
+                    order = {
+                        'order_number': item.get('ord_no', ''),
+                        'stock_code': item.get('stk_cd', ''),
+                        'stock_name': item.get('stk_nm', ''),
+                        'order_type': item.get('io_tp_nm', ''),  # "-매도", "+매수"
+                        'order_price': Decimal(str(item.get('ord_pric', '0'))),
+                        'order_quantity': int(item.get('ord_qty', '0')),
+                        'unexecuted_quantity': int(item.get('oso_qty', '0')),
+                        'executed_quantity': int(item.get('cntr_qty', '0')),
+                        'order_status': item.get('ord_stt', ''),  # "접수"
+                        'order_time': item.get('tm', ''),
+                        'trade_type': item.get('trde_tp', ''),  # "보통", "시장가"
+                        'current_price': Decimal(str(item.get('cur_prc', '0').replace('+', '').replace('-', ''))) if item.get('cur_prc') else Decimal('0')
+                    }
+                    orders.append(order)
+                
+                logger.info(f"✅ 미체결 조회 성공 - {len(orders)}건")
+                return orders
+            else:
+                logger.error(f"미체결 조회 API HTTP 오류: {response.status_code}, {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"미체결 조회 중 오류 발생: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
+    
+    def has_pending_orders(self, stock_code: str) -> bool:
+        """
+        특정 종목의 미체결 주문이 있는지 확인합니다.
+        
+        Args:
+            stock_code: 종목코드
+            
+        Returns:
+            bool: 미체결 주문이 있으면 True, 없으면 False
+        """
+        try:
+            pending_orders = self.get_pending_orders(stock_code=stock_code)
+            
+            if pending_orders is None:
+                logger.warning(f"미체결 조회 실패로 False 반환: {stock_code}")
+                return False
+            
+            # 미체결 수량이 0보다 큰 주문이 있는지 확인
+            for order in pending_orders:
+                if order['unexecuted_quantity'] > 0:
+                    logger.info(f"미체결 주문 발견: {order['order_number']} - 미체결수량: {order['unexecuted_quantity']}")
+                    return True
+            
+            logger.info(f"미체결 주문 없음: {stock_code}")
+            return False
+            
+        except Exception as e:
+            logger.error(f"미체결 확인 중 오류: {e}")
+            return False
 

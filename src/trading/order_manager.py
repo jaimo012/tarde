@@ -263,12 +263,14 @@ class OrderManager:
             logger.error(f"시장가 매도 주문 중 오류 발생: {e}")
             return None
     
-    def check_order_execution(self, order_number: str, max_retries: int = 3) -> Optional[Dict]:
+    def check_order_execution(self, order_number: str, stock_code: str, max_retries: int = 3) -> Optional[Dict]:
         """
         주문 체결 여부를 확인합니다.
+        키움증권 REST API: TR ka10076 (체결요청)
         
         Args:
             order_number: 주문번호
+            stock_code: 종목코드
             max_retries: 최대 재시도 횟수
             
         Returns:
@@ -279,11 +281,11 @@ class OrderManager:
                 - executed_amount: 체결 금액 (Decimal)
         """
         try:
-            logger.info(f"체결 확인 중: 주문번호 {order_number}")
+            logger.info(f"체결 확인 중: 주문번호 {order_number}, 종목 {stock_code}")
             
             for attempt in range(max_retries):
-                # 주문 내역 조회
-                orders = self.kiwoom.get_order_status(order_number)
+                # 체결 내역 조회 (TR: ka10076)
+                orders = self.kiwoom.get_order_status(stock_code=stock_code, order_number=order_number)
                 
                 if not orders or len(orders) == 0:
                     logger.warning(f"주문 내역을 찾을 수 없음 (시도 {attempt+1}/{max_retries})")
@@ -330,6 +332,7 @@ class OrderManager:
     def has_pending_orders(self, stock_code: str) -> bool:
         """
         특정 종목의 미체결 주문이 있는지 확인합니다.
+        키움증권 REST API: TR ka10075 (미체결요청)
         
         Args:
             stock_code: 종목코드
@@ -338,19 +341,8 @@ class OrderManager:
             bool: 미체결 주문 존재 여부
         """
         try:
-            orders = self.kiwoom.get_order_status()
-            
-            if not orders:
-                return False
-            
-            for order in orders:
-                if order['stock_code'] == stock_code:
-                    # 주문수량과 체결수량이 다르면 미체결 주문이 있음
-                    if order['executed_quantity'] < order['order_quantity']:
-                        logger.info(f"미체결 주문 발견: {order['stock_name']} ({order['executed_quantity']}/{order['order_quantity']}주)")
-                        return True
-            
-            return False
+            # 키움증권 클라이언트의 has_pending_orders() 직접 사용
+            return self.kiwoom.has_pending_orders(stock_code)
             
         except Exception as e:
             logger.error(f"미체결 주문 확인 중 오류 발생: {e}")

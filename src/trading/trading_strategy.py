@@ -176,7 +176,7 @@ class TradingStrategy:
             for attempt in range(5):
                 time.sleep(2)
                 
-                execution = self.order_mgr.check_order_execution(order_number)
+                execution = self.order_mgr.check_order_execution(order_number, stock_code)
                 if execution and execution['executed']:
                     logger.info(f"✅ 매수 체결 완료: {execution['executed_quantity']}주 @ {execution['executed_price']:,}원")
                     
@@ -277,7 +277,7 @@ class TradingStrategy:
                         # 체결 확인
                         import time
                         time.sleep(2)
-                        execution = self.order_mgr.check_order_execution(sell_result['order_number'])
+                        execution = self.order_mgr.check_order_execution(sell_result['order_number'], stock_code)
                         
                         if execution and execution['executed']:
                             executed_price = execution['executed_price']
