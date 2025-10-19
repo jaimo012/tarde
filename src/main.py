@@ -71,6 +71,20 @@ class DartScrapingSystem:
         logger.info("🚀 DART 공시 스크래핑 및 구글 시트 저장 자동화를 시작합니다.")
         
         try:
+            return self._run_with_error_handling()
+        except Exception as e:
+            # 전역 예외 처리 - 모든 예상치 못한 오류 캐치
+            self._handle_critical_error("시스템 전체 실행 실패", e)
+            return False
+    
+    def _run_with_error_handling(self) -> bool:
+        """
+        실제 실행 로직 (오류 처리 포함)
+        
+        Returns:
+            bool: 실행 성공 여부
+        """
+        try:
             # 0단계: 시장 개장 여부 확인
             should_run, market_status = should_run_dart_scraping()
             logger.info(f"📊 시장 상태: {market_status}")
@@ -321,6 +335,69 @@ class DartScrapingSystem:
             )
         
         return saved_contracts_count
+    
+    def _handle_critical_error(self, error_title: str, exception: Exception):
+        """
+        치명적 오류를 처리하고 상세 정보를 슬랙으로 전송합니다.
+        
+        Args:
+            error_title: 오류 제목
+            exception: 발생한 예외
+        """
+        import traceback
+        
+        logger.error(f"치명적 오류 발생: {error_title}")
+        logger.error(f"예외 타입: {type(exception).__name__}")
+        logger.error(f"예외 메시지: {str(exception)}")
+        
+        # 스택 트레이스 추출
+        stack_trace = traceback.format_exc()
+        logger.error(f"스택 트레이스:\n{stack_trace}")
+        
+        # 상세 정보 수집
+        error_details = {
+            "⚠️ 오류 유형": type(exception).__name__,
+            "📝 오류 메시지": str(exception),
+            "📍 발생 위치": error_title,
+        }
+        
+        # 자동매매 시스템 상태 추가
+        try:
+            if hasattr(self, 'auto_trading') and self.auto_trading.trading_enabled:
+                error_details["🤖 자동매매 상태"] = "활성화됨"
+                
+                # 예수금 조회 시도
+                try:
+                    balance = self.auto_trading.kiwoom_client.get_balance()
+                    if balance:
+                        error_details["💰 예수금"] = f"{balance['available_amount']:,}원"
+                except:
+                    error_details["💰 예수금"] = "조회 실패"
+                
+                # 보유 포지션 조회 시도
+                try:
+                    position = self.auto_trading.position_mgr.get_current_position()
+                    if position:
+                        error_details["📊 보유 종목"] = f"{position['stock_name']}({position['stock_code']}) {position['quantity']}주"
+                    else:
+                        error_details["📊 보유 종목"] = "없음"
+                except:
+                    error_details["📊 보유 종목"] = "조회 실패"
+            else:
+                error_details["🤖 자동매매 상태"] = "비활성화됨"
+        except Exception as e:
+            error_details["🤖 자동매매 상태"] = f"상태 확인 실패: {str(e)}"
+        
+        # 슬랙으로 치명적 오류 알림 전송
+        try:
+            self.slack_notifier.send_critical_error(
+                error_title=error_title,
+                error_details=error_details,
+                stack_trace=stack_trace
+            )
+            logger.info("치명적 오류 슬랙 알림 전송 완료")
+        except Exception as e:
+            logger.error(f"치명적 오류 알림 전송 실패: {e}")
 
 
 def acquire_lock(lock_file: str) -> bool:

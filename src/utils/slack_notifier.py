@@ -473,6 +473,105 @@ class SlackNotifier:
         
         return self._send_to_slack(payload)
     
+    def send_critical_error(self, error_title: str, error_details: Dict, 
+                           stack_trace: Optional[str] = None) -> bool:
+        """
+        치명적 오류를 매우 상세하게 슬랙으로 전송합니다.
+        
+        Args:
+            error_title: 오류 제목
+            error_details: 오류 상세 정보 딕셔너리
+            stack_trace: 스택 트레이스 (선택사항)
+            
+        Returns:
+            bool: 전송 성공 여부
+        """
+        if not self.is_enabled:
+            return True
+        
+        try:
+            import platform
+            import sys
+            import pytz
+            
+            # 한국 시간으로 변환
+            kst = pytz.timezone('Asia/Seoul')
+            now_kst = datetime.now(kst)
+            
+            # 기본 필드
+            fields = [
+                {
+                    "title": "🕐 발생 시각 (KST)",
+                    "value": now_kst.strftime("%Y-%m-%d %H:%M:%S"),
+                    "short": True
+                },
+                {
+                    "title": "💻 시스템",
+                    "value": f"{platform.system()} {platform.release()}",
+                    "short": True
+                },
+                {
+                    "title": "🐍 Python 버전",
+                    "value": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+                    "short": True
+                }
+            ]
+            
+            # 상세 정보 추가
+            for key, value in error_details.items():
+                # 값이 너무 길면 자르기
+                str_value = str(value)
+                if len(str_value) > 500:
+                    str_value = str_value[:497] + "..."
+                
+                fields.append({
+                    "title": key,
+                    "value": str_value,
+                    "short": False
+                })
+            
+            # 스택 트레이스 추가 (있는 경우)
+            if stack_trace:
+                # 스택 트레이스가 너무 길면 마지막 2000자만
+                if len(stack_trace) > 2000:
+                    stack_trace = "...\n" + stack_trace[-2000:]
+                
+                fields.append({
+                    "title": "📋 스택 트레이스",
+                    "value": f"```\n{stack_trace}\n```",
+                    "short": False
+                })
+            
+            payload = {
+                "text": f"🚨🚨🚨 *긴급: 시스템 치명적 오류 발생!* 🚨🚨🚨\n\n*{error_title}*",
+                "attachments": [
+                    {
+                        "color": "#FF0000",
+                        "fields": fields,
+                        "footer": "자동매매 시스템 - 긴급 알림",
+                        "ts": int(datetime.now().timestamp())
+                    }
+                ],
+                "username": "긴급 알림 봇",
+                "icon_emoji": ":rotating_light:"
+            }
+            
+            logger.info("치명적 오류 슬랙 알림 전송 중...")
+            return self._send_to_slack(payload)
+            
+        except Exception as e:
+            logger.error(f"치명적 오류 알림 전송 중 오류 발생: {e}")
+            # 최소한의 알림이라도 보내기
+            try:
+                simple_payload = {
+                    "text": f"🚨🚨🚨 긴급: {error_title}\n\n상세 정보 전송 실패. 즉시 로그를 확인하세요!",
+                    "username": "긴급 알림 봇",
+                    "icon_emoji": ":rotating_light:"
+                }
+                return self._send_to_slack(simple_payload)
+            except:
+                return False
+    
     def send_buy_start_notification(self, stock_name: str, stock_code: str, 
                                     score: int, disclosure_info: Dict) -> bool:
         """

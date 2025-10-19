@@ -44,8 +44,9 @@ class APIRateLimiter:
         
         # 일일 호출 한도 체크
         if self.daily_call_count >= self.max_calls_per_day:
-            logger.error(f"일일 API 호출 한도 초과: {self.daily_call_count}/{self.max_calls_per_day}")
-            raise Exception("일일 API 호출 한도를 초과했습니다.")
+            error_msg = f"🚨 키움증권 API 일일 호출 한도 초과! 현재: {self.daily_call_count}/{self.max_calls_per_day}회"
+            logger.error(error_msg)
+            raise Exception(error_msg)
         
         # 최근 1초 이내의 호출만 유지
         one_second_ago = now - timedelta(seconds=1)
@@ -210,7 +211,15 @@ class KiwoomAPIClient:
                 logger.info(f"키움증권 API 인증 성공 (만료: {self.token_expires_at})")
                 return True
             else:
-                logger.error(f"키움증권 API 인증 실패: {response.status_code} - {response.text}")
+                error_msg = f"🚨 키움증권 API 인증 실패!\n"
+                error_msg += f"상태코드: {response.status_code}\n"
+                error_msg += f"응답: {response.text}\n"
+                error_msg += f"확인사항:\n"
+                error_msg += f"1. KIWOOM_APP_KEY가 올바른지 확인\n"
+                error_msg += f"2. KIWOOM_APP_SECRET이 올바른지 확인\n"
+                error_msg += f"3. 키움증권 서비스 승인 상태 확인\n"
+                error_msg += f"4. 서버 IP가 화이트리스트에 등록되었는지 확인"
+                logger.error(error_msg)
                 return False
                 
         except Exception as e:
@@ -496,7 +505,14 @@ class KiwoomAPIClient:
                     logger.info(f"✅ 주문 성공 - 주문번호: {order_result['order_number']}")
                     return order_result
                 else:
-                    logger.error(f"❌ 주문 실패: {result.get('msg1', 'Unknown error')}")
+                    error_msg = f"🚨 주문 실패!\n"
+                    error_msg += f"종목: {stock_code}\n"
+                    error_msg += f"주문유형: {side} {order_type}\n"
+                    error_msg += f"수량: {quantity}주\n"
+                    error_msg += f"가격: {price if price else '시장가'}원\n"
+                    error_msg += f"오류 메시지: {result.get('msg1', 'Unknown error')}\n"
+                    error_msg += f"오류 코드: {result.get('rt_cd', 'N/A')}"
+                    logger.error(error_msg)
                     return None
             else:
                 logger.error(f"주문 API 오류: {response.status_code}")

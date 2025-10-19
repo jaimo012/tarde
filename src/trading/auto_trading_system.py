@@ -165,9 +165,28 @@ class AutoTradingSystem:
             
         except Exception as e:
             logger.error(f"신규 계약 처리 중 오류 발생: {e}")
-            self.slack_notifier.send_system_notification(
-                f"🚨 신규 계약 처리 오류: {str(e)}",
-                "error"
+            
+            # 상세 오류 정보 수집
+            import traceback
+            error_details = {
+                "⚠️ 오류 유형": type(e).__name__,
+                "📝 오류 메시지": str(e),
+                "📍 발생 단계": "신규 계약 자동매매 처리",
+                "📊 종목": f"{stock_name}({stock_code})",
+            }
+            
+            # 현재 시스템 상태 추가
+            try:
+                balance = self.kiwoom_client.get_balance()
+                if balance:
+                    error_details["💰 현재 예수금"] = f"{balance['available_amount']:,}원"
+            except:
+                pass
+            
+            self.slack_notifier.send_critical_error(
+                error_title=f"매수 처리 실패: {stock_name}({stock_code})",
+                error_details=error_details,
+                stack_trace=traceback.format_exc()
             )
             return False
     
@@ -261,9 +280,30 @@ class AutoTradingSystem:
             
         except Exception as e:
             logger.error(f"포지션 관리 중 오류 발생: {e}")
-            self.slack_notifier.send_system_notification(
-                f"🚨 포지션 관리 오류: {str(e)}",
-                "error"
+            
+            # 상세 오류 정보 수집
+            import traceback
+            error_details = {
+                "⚠️ 오류 유형": type(e).__name__,
+                "📝 오류 메시지": str(e),
+                "📍 발생 단계": "보유 포지션 관리",
+            }
+            
+            # 현재 포지션 정보 추가 시도
+            try:
+                position = self.position_mgr.get_current_position()
+                if position:
+                    error_details["📊 문제 종목"] = f"{position['stock_name']}({position['stock_code']})"
+                    error_details["📈 현재가"] = f"{position['current_price']:,}원"
+                    error_details["💼 보유수량"] = f"{position['quantity']}주"
+                    error_details["📊 수익률"] = f"{position['profit_rate']:.2f}%"
+            except:
+                pass
+            
+            self.slack_notifier.send_critical_error(
+                error_title="포지션 관리 중 오류 발생",
+                error_details=error_details,
+                stack_trace=traceback.format_exc()
             )
             return False
 
