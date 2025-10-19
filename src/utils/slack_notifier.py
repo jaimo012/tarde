@@ -854,7 +854,9 @@ class SlackNotifier:
     
     def send_system_startup_notification(self, balance_info: Optional[Dict] = None, 
                                         position_info: Optional[Dict] = None,
-                                        trading_enabled: bool = False) -> bool:
+                                        trading_enabled: bool = False,
+                                        market_status: Optional[str] = None,
+                                        is_market_open: bool = False) -> bool:
         """
         시스템 시작 알림을 슬랙으로 전송합니다.
         
@@ -862,6 +864,8 @@ class SlackNotifier:
             balance_info: 계좌 잔고 정보 (예수금 등)
             position_info: 보유 포지션 정보
             trading_enabled: 자동매매 활성화 여부
+            market_status: 시장 상태 메시지
+            is_market_open: 시장 개장 여부
             
         Returns:
             bool: 전송 성공 여부
@@ -890,6 +894,15 @@ class SlackNotifier:
                     "short": True
                 }
             ]
+            
+            # 시장 상태 추가
+            if market_status:
+                market_emoji = "✅" if is_market_open else "⏸️"
+                fields.append({
+                    "title": "📊 시장 상태",
+                    "value": f"{market_emoji} {market_status}",
+                    "short": False
+                })
             
             # 자동매매 상태
             if trading_enabled:
@@ -943,15 +956,23 @@ class SlackNotifier:
                     "short": False
                 })
             
-            # 메시지 색상 결정
-            color = "#2eb886" if trading_enabled else "#ffa500"  # 초록 또는 주황
+            # 메시지 색상 및 텍스트 결정
+            if not is_market_open:
+                color = "#808080"  # 회색 (휴장)
+                status_text = "시스템이 정상적으로 시작되었습니다. 시장 휴장 중이므로 모니터링을 대기합니다."
+            elif trading_enabled:
+                color = "#2eb886"  # 초록 (자동매매 활성화)
+                status_text = "시스템이 정상적으로 시작되었습니다. 자동매매 모니터링을 시작합니다."
+            else:
+                color = "#ffa500"  # 주황 (공시 모니터링만)
+                status_text = "시스템이 정상적으로 시작되었습니다. 공시 모니터링을 시작합니다."
             
             payload = {
                 "text": "🚀 *자동매매 시스템 시작*",
                 "attachments": [
                     {
                         "color": color,
-                        "text": "시스템이 정상적으로 시작되었습니다. 모니터링을 시작합니다.",
+                        "text": status_text,
                         "fields": fields,
                         "footer": "자동매매 시스템",
                         "ts": int(datetime.now().timestamp())

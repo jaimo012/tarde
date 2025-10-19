@@ -85,33 +85,33 @@ class DartScrapingSystem:
             bool: 실행 성공 여부
         """
         try:
-            # 0단계: 시장 개장 여부 확인
+            # 0단계: 시스템 시작 알림 전송 (시장 개장 여부와 무관하게 항상 전송)
+            self._send_startup_notification()
+            
+            # 1단계: 시장 개장 여부 확인
             should_run, market_status = should_run_dart_scraping()
             logger.info(f"📊 시장 상태: {market_status}")
             
             if not should_run:
                 logger.info("⏸️ 시장이 휴장 중이므로 스크래핑을 건너뜁니다.")
-                # 휴장일에는 슬랙 알림 전송하지 않음 (불필요한 스팸 방지)
+                # 시스템은 정상 작동 중이지만 휴장일이므로 대기
                 return True  # 정상적인 스킵이므로 True 반환
             
             logger.info("✅ 시장 개장 중이므로 스크래핑을 진행합니다.")
             
-            # 시스템 시작 알림 전송
-            self._send_startup_notification()
-            
-            # 1단계: 구글 스프레드시트 연결
+            # 2단계: 구글 스프레드시트 연결
             if not self._connect_to_sheets():
                 return False
             
-            # 2단계: 기존 데이터 로드
+            # 3단계: 기존 데이터 로드
             existing_reports, company_list = self._load_existing_data()
             if company_list is None:
                 return False
             
-            # 3단계: 각 회사별 공시 처리
+            # 4단계: 각 회사별 공시 처리
             total_new_contracts = self._process_companies(company_list, existing_reports)
             
-            # 4단계: 완료 알림
+            # 5단계: 완료 알림
             completion_message = f"🏁 모든 회사에 대한 분석 및 저장이 완료되었습니다. (신규 계약: {total_new_contracts}건)"
             logger.info(completion_message)
             
@@ -123,7 +123,7 @@ class DartScrapingSystem:
                 )
             # 신규 계약이 없으면 슬랙 알림 전송하지 않음 (스팸 방지)
             
-            # 5단계: 보유 포지션 관리 (자동매매 활성화 시)
+            # 6단계: 보유 포지션 관리 (자동매매 활성화 시)
             if is_market_open():
                 logger.info("보유 포지션 관리를 시작합니다...")
                 try:
@@ -350,6 +350,9 @@ class DartScrapingSystem:
             position_info = None
             trading_enabled = False
             
+            # 시장 상태 확인
+            should_run, market_status = should_run_dart_scraping()
+            
             # 자동매매 활성화 여부 확인
             if hasattr(self, 'auto_trading') and self.auto_trading.trading_enabled:
                 trading_enabled = True
@@ -378,7 +381,9 @@ class DartScrapingSystem:
             self.slack_notifier.send_system_startup_notification(
                 balance_info=balance_info,
                 position_info=position_info,
-                trading_enabled=trading_enabled
+                trading_enabled=trading_enabled,
+                market_status=market_status,
+                is_market_open=should_run
             )
             
             logger.info("✅ 시스템 시작 알림 전송 완료")
