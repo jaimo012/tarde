@@ -67,7 +67,9 @@ class APIRateLimiter:
 class KiwoomAPIClient:
     """키움증권 REST API 클라이언트"""
     
-    BASE_URL = "https://openapi.kiwoom.com:9443"
+    # 한국투자증권 OpenAPI URL (키움증권과 합병)
+    BASE_URL_LIVE = "https://openapi.koreainvestment.com:9443"  # 실전투자
+    BASE_URL_MOCK = "https://openapivts.koreainvestment.com:29443"  # 모의투자
     
     def __init__(self, app_key: str, app_secret: str, account_number: str):
         """
@@ -85,6 +87,15 @@ class KiwoomAPIClient:
         self.app_key = app_key
         self.app_secret = app_secret
         self.account_number = account_number
+        
+        # 거래 모드에 따른 BASE_URL 설정
+        from config.settings import TRADING_MODE
+        if TRADING_MODE == 'LIVE':
+            self.base_url = self.BASE_URL_LIVE
+            logger.info("실전투자 모드로 초기화")
+        else:
+            self.base_url = self.BASE_URL_MOCK
+            logger.info("모의투자 모드로 초기화")
         
         # 민감정보 마스킹을 위한 해시
         self.app_key_masked = self._mask_sensitive_data(app_key)
@@ -104,7 +115,7 @@ class KiwoomAPIClient:
             'User-Agent': 'DART-Trading-System/1.0'
         })
         
-        logger.info(f"키움증권 API 클라이언트 초기화 완료 (계좌: {self.account_masked})")
+        logger.info(f"키움증권 API 클라이언트 초기화 완료 (계좌: {self.account_masked}, URL: {self.base_url})")
     
     def _mask_sensitive_data(self, data: str) -> str:
         """민감 데이터를 마스킹합니다."""
@@ -191,7 +202,7 @@ class KiwoomAPIClient:
         try:
             logger.info("키움증권 API 인증 시작...")
             
-            url = f"{self.BASE_URL}/oauth2/token"
+            url = f"{self.base_url}/oauth2/token"
             data = {
                 'grant_type': 'client_credentials',
                 'appkey': self.app_key,
@@ -248,7 +259,7 @@ class KiwoomAPIClient:
         try:
             self._ensure_authenticated()
             
-            url = f"{self.BASE_URL}/uapi/domestic-stock/v1/trading/inquire-psbl-order"
+            url = f"{self.base_url}/uapi/domestic-stock/v1/trading/inquire-psbl-order"
             headers = self._get_headers('TTTC8908R')
             
             params = {
@@ -306,7 +317,7 @@ class KiwoomAPIClient:
         try:
             self._ensure_authenticated()
             
-            url = f"{self.BASE_URL}/uapi/domestic-stock/v1/trading/inquire-balance"
+            url = f"{self.base_url}/uapi/domestic-stock/v1/trading/inquire-balance"
             headers = self._get_headers('TTTC8434R')
             
             params = {
@@ -384,7 +395,7 @@ class KiwoomAPIClient:
             
             self._ensure_authenticated()
             
-            url = f"{self.BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-price"
+            url = f"{self.base_url}/uapi/domestic-stock/v1/quotations/inquire-price"
             headers = self._get_headers('FHKST01010100')
             
             params = {
@@ -475,7 +486,7 @@ class KiwoomAPIClient:
                 order_dvsn = '00'  # 지정가
                 side = 'sell'
             
-            url = f"{self.BASE_URL}/uapi/domestic-stock/v1/trading/order-cash"
+            url = f"{self.base_url}/uapi/domestic-stock/v1/trading/order-cash"
             headers = self._get_headers(tr_id)
             
             data = {
@@ -545,7 +556,7 @@ class KiwoomAPIClient:
         try:
             self._ensure_authenticated()
             
-            url = f"{self.BASE_URL}/uapi/domestic-stock/v1/trading/inquire-daily-ccld"
+            url = f"{self.base_url}/uapi/domestic-stock/v1/trading/inquire-daily-ccld"
             headers = self._get_headers('TTTC8001R')
             
             params = {
