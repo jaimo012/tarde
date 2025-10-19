@@ -856,7 +856,8 @@ class SlackNotifier:
                                         position_info: Optional[Dict] = None,
                                         trading_enabled: bool = False,
                                         market_status: Optional[str] = None,
-                                        is_market_open: bool = False) -> bool:
+                                        is_market_open: bool = False,
+                                        auth_failed: bool = False) -> bool:
         """
         시스템 시작 알림을 슬랙으로 전송합니다.
         
@@ -912,11 +913,18 @@ class SlackNotifier:
                     "short": False
                 })
             else:
-                fields.append({
-                    "title": "🤖 자동매매",
-                    "value": "⚠️ 비활성화 (공시 모니터링만 실행)",
-                    "short": False
-                })
+                if auth_failed:
+                    fields.append({
+                        "title": "🤖 자동매매",
+                        "value": "🚨 비활성화 - 키움 API 인증 실패!\n상세 오류 메시지를 확인하세요.",
+                        "short": False
+                    })
+                else:
+                    fields.append({
+                        "title": "🤖 자동매매",
+                        "value": "⚠️ 비활성화 (공시 모니터링만 실행)",
+                        "short": False
+                    })
             
             # 키움 API 연결 상태 (항상 표시)
             fields.append({
@@ -964,7 +972,10 @@ class SlackNotifier:
                 })
             
             # 메시지 색상 및 텍스트 결정
-            if not is_market_open:
+            if auth_failed:
+                color = "#FF0000"  # 빨강 (인증 실패)
+                status_text = "⚠️ 시스템이 시작되었으나 키움 API 인증에 실패했습니다!\n자동매매가 비활성화되었습니다. 긴급 조치가 필요합니다."
+            elif not is_market_open:
                 color = "#808080"  # 회색 (휴장)
                 status_text = "시스템이 정상적으로 시작되었습니다. 시장 휴장 중이므로 모니터링을 대기합니다."
             elif trading_enabled:

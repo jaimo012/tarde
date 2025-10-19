@@ -64,8 +64,40 @@ class AutoTradingSystem:
             
             # 인증
             if not self.kiwoom_client.authenticate():
-                logger.error("키움증권 API 인증 실패")
+                logger.error("🚨 키움증권 API 인증 실패 - 자동매매가 비활성화됩니다!")
                 self.trading_enabled = False
+                
+                # 긴급 슬랙 알림
+                self.slack_notifier.send_critical_error(
+                    error_title="🚨 키움증권 API 인증 실패",
+                    error_details={
+                        "⚠️ 오류 유형": "인증 실패",
+                        "📝 오류 메시지": "키움증권 API 인증에 실패했습니다",
+                        "📍 발생 위치": "자동매매 시스템 초기화",
+                        "🤖 자동매매 상태": "비활성화됨",
+                        "확인사항": "1. KIWOOM_APP_KEY 확인\n2. KIWOOM_APP_SECRET 확인\n3. KIWOOM_ACCOUNT_NUMBER 확인\n4. 서버 IP 화이트리스트 등록 확인\n5. 키움증권 서비스 승인 상태 확인"
+                    },
+                    stack_trace=None
+                )
+                
+                # 오류 시트 기록
+                try:
+                    import traceback
+                    self.sheets_client.log_error_to_sheet({
+                        'timestamp': datetime.now(),
+                        'severity': 'CRITICAL',
+                        'module': '키움증권 API 인증',
+                        'error_type': '인증 실패',
+                        'error_message': '키움증권 API 인증에 실패하여 자동매매가 비활성화되었습니다',
+                        'related_stock': '해당없음',
+                        'trading_status': '비활성화됨',
+                        'position_info': '확인 불가',
+                        'resolution_status': '미해결',
+                        'details': 'API KEY, SECRET, 계좌번호 확인 필요. 서버 IP 화이트리스트 등록 확인 필요.'
+                    })
+                except Exception as log_error:
+                    logger.error(f"오류 로그 시트 기록 실패: {log_error}")
+                
                 return
             
             self.order_mgr = OrderManager(self.kiwoom_client)
@@ -79,8 +111,39 @@ class AutoTradingSystem:
             logger.info("🚀 자동매매 시스템이 활성화되었습니다")
             
         except Exception as e:
-            logger.error(f"자동매매 시스템 초기화 실패: {e}")
+            logger.error(f"🚨 자동매매 시스템 초기화 실패: {e}")
             self.trading_enabled = False
+            
+            # 긴급 슬랙 알림
+            import traceback
+            self.slack_notifier.send_critical_error(
+                error_title="🚨 자동매매 시스템 초기화 실패",
+                error_details={
+                    "⚠️ 오류 유형": type(e).__name__,
+                    "📝 오류 메시지": str(e),
+                    "📍 발생 위치": "자동매매 시스템 초기화",
+                    "🤖 자동매매 상태": "비활성화됨"
+                },
+                stack_trace=traceback.format_exc()
+            )
+            
+            # 오류 시트 기록
+            try:
+                stack_trace_str = traceback.format_exc()
+                self.sheets_client.log_error_to_sheet({
+                    'timestamp': datetime.now(),
+                    'severity': 'CRITICAL',
+                    'module': '자동매매 시스템 초기화',
+                    'error_type': type(e).__name__,
+                    'error_message': str(e)[:200],
+                    'related_stock': '해당없음',
+                    'trading_status': '비활성화됨',
+                    'position_info': '확인 불가',
+                    'resolution_status': '미해결',
+                    'details': stack_trace_str[-500:] if len(stack_trace_str) > 500 else stack_trace_str
+                })
+            except Exception as log_error:
+                logger.error(f"오류 로그 시트 기록 실패: {log_error}")
     
     def process_new_contract(self, contract_data: dict) -> bool:
         """
