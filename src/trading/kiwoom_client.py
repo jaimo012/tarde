@@ -422,60 +422,46 @@ class KiwoomAPIClient:
         """
         종목의 현재가 정보를 조회합니다.
         
+        ⚠️ 키움증권 REST API에는 개별 현재가 조회 API가 없으므로,
+        pykrx 라이브러리를 사용하여 현재가를 조회합니다.
+        
         Args:
             stock_code: 종목코드 (6자리)
             
         Returns:
             Optional[Dict]: 현재가 정보 (실패 시 None)
                 - current_price: 현재가 (Decimal)
-                - open_price: 시가 (Decimal)
-                - high_price: 고가 (Decimal)
-                - low_price: 저가 (Decimal)
-                - volume: 거래량
         """
         try:
-            # 종목코드 검증
-            if not stock_code or len(stock_code) != 6 or not stock_code.isdigit():
-                logger.error(f"잘못된 종목코드 형식: {stock_code}")
+            logger.info(f"pykrx를 사용한 현재가 조회: {stock_code}")
+            
+            from pykrx import stock
+            from datetime import datetime
+            
+            # 오늘 날짜
+            today = datetime.now().strftime('%Y%m%d')
+            
+            # OHLCV 조회 (오늘 날짜)
+            df = stock.get_market_ohlcv_by_date(today, today, stock_code)
+            
+            if df is None or df.empty:
+                logger.error(f"pykrx 현재가 조회 실패: {stock_code} (데이터 없음)")
                 return None
             
-            self._ensure_authenticated()
+            # 종가를 현재가로 사용
+            close_price = df.iloc[0]['종가']
             
-            url = f"{self.base_url}/uapi/domestic-stock/v1/quotations/inquire-price"
-            headers = self._get_headers('FHKST01010100')
-            
-            params = {
-                'FID_COND_MRKT_DIV_CODE': 'J',  # 시장분류 (J: 주식)
-                'FID_INPUT_ISCD': stock_code
+            price_info = {
+                'current_price': Decimal(str(close_price))
             }
             
-            response = self._request_with_retry('GET', url, headers=headers, params=params)
+            logger.info(f"✅ 현재가 조회 성공 (pykrx): {stock_code} = {close_price:,}원")
+            return price_info
             
-            if response.status_code == 200:
-                result = response.json()
-                
-                if result.get('rt_cd') == '0':
-                    output = result.get('output', {})
-                    
-                    price_info = {
-                        'current_price': Decimal(str(output.get('stck_prpr', '0'))),
-                        'open_price': Decimal(str(output.get('stck_oprc', '0'))),
-                        'high_price': Decimal(str(output.get('stck_hgpr', '0'))),
-                        'low_price': Decimal(str(output.get('stck_lwpr', '0'))),
-                        'volume': int(output.get('acml_vol', '0'))
-                    }
-                    
-                    logger.debug(f"현재가 조회 성공 - {stock_code}: {price_info['current_price']:,}원")
-                    return price_info
-                else:
-                    logger.error(f"현재가 조회 실패: {result.get('msg1', 'Unknown error')}")
-                    return None
-            else:
-                logger.error(f"현재가 조회 API 오류: {response.status_code}")
-                return None
-                
         except Exception as e:
-            logger.error(f"현재가 조회 중 오류 발생: {e}")
+            logger.error(f"pykrx 현재가 조회 중 오류: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
     
     def place_order(self, stock_code: str, order_type: str, quantity: int, 
@@ -571,11 +557,13 @@ class KiwoomAPIClient:
                 order_result = {
                     'order_number': result.get('ord_no', ''),
                     'exchange': result.get('dmst_stex_tp', 'KRX'),
+                    'order_time': datetime.now().strftime('%H%M%S'),  # 키움 API는 주문 시간을 반환하지 않으므로 현재 시간 사용
                 }
                 
                 logger.info(f"✅ 주문 성공!")
                 logger.info(f"  주문번호: {order_result['order_number']}")
                 logger.info(f"  거래소: {order_result['exchange']}")
+                logger.info(f"  주문시각: {order_result['order_time']}")
                 logger.info(f"  메시지: {result.get('return_msg', '')}")
                 return order_result
             else:
