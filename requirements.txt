@@ -19,6 +19,9 @@ python-dotenv>=1.0.0
 # 로깅
 loguru>=0.7.0
 
+# 스케줄러 (클라우드타입 무한 실행용)
+schedule>=1.2.0
+
 # HTML/XML 파싱
 beautifulsoup4>=4.12.0
 

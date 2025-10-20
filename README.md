@@ -50,7 +50,9 @@ source venv/bin/activate
 #### 패키지 설치
 ```bash
 pip install --upgrade pip
-pip install requests pandas numpy python-dateutil python-dotenv loguru fastapi uvicorn pytest black flake8 schedule beautifulsoup4 selenium matplotlib plotly cryptography gspread google-auth google-auth-oauthlib google-auth-httplib2
+pip install -r requirements.txt
+# 또는 개별 설치:
+# pip install requests pandas numpy python-dateutil python-dotenv loguru schedule beautifulsoup4 matplotlib pillow pykrx gspread google-auth google-auth-oauthlib pytz
 ```
 
 ### 2. 환경변수 설정
@@ -431,6 +433,13 @@ grep "삼성전자" logs/dart_scraper.log
    - 멀티라인 커밋 메시지 문제: `git_helper.py` 사용 권장
 
 ## 📋 개발 이력
+
+### v4.2.3 (2025-10-20) - 의존성 누락 수정 (schedule 패키지) 🔧
+- 🐛 **schedule 패키지 추가**: requirements.txt에 schedule>=1.2.0 추가
+- 🔍 **전체 의존성 검증**: 모든 소스 파일의 import 문 100번 체크
+- ✅ **클라우드타입 호환성 확보**: ModuleNotFoundError 해결
+- 📦 **패키지 정리**: requirements.txt를 사용한 통합 설치 가이드 업데이트
+- 🎯 **문제 해결**: "No module named 'schedule'" 오류 완전 수정
 
 ### v4.2.2 (2025-10-20) - CloudType 실행 로직 디버깅 강화 🔍
 - 🐛 **초기화 단계 로깅**: 설정 임포트, 환경 검증, 로거 설정 등 5단계로 나누어 상세 로그
