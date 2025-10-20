@@ -111,77 +111,80 @@ def run_scraping_system():
     """스크래핑 시스템 실행"""
     global system_instance
     
-    logger.info("=" * 80)
-    logger.info("🔄 [스크래핑 시스템 실행 시작]")
-    logger.info("=" * 80)
+    print("=" * 80)
+    print("🔄 [스크래핑 시스템 실행 시작]")
+    print("=" * 80)
     
     try:
         # 클라우드타입 설정으로 시스템 초기화
-        logger.info("📦 [1/3] main_cloudtype 모듈 임포트 시도 중...")
+        print("📦 [1/3] main_cloudtype 모듈 임포트 시도 중...")
         from src.main_cloudtype import CloudTypeDartScrapingSystem
-        logger.info("✅ [1/3] CloudTypeDartScrapingSystem 임포트 완료")
+        print("✅ [1/3] CloudTypeDartScrapingSystem 임포트 완료")
         
-        logger.info("🔧 [2/3] 시스템 인스턴스 생성 중...")
+        print("🔧 [2/3] 시스템 인스턴스 생성 중...")
         system_instance = CloudTypeDartScrapingSystem()
-        logger.info("✅ [2/3] 시스템 인스턴스 생성 완료")
+        print("✅ [2/3] 시스템 인스턴스 생성 완료")
         
-        logger.info("🚀 [3/3] 클라우드타입에서 DART 스크래핑 시스템을 시작합니다.")
+        print("🚀 [3/3] 클라우드타입에서 DART 스크래핑 시스템을 시작합니다.")
         
         # 시스템 실행
-        logger.info("▶️ system_instance.run() 호출 중...")
+        print("▶️ system_instance.run() 호출 중...")
         success = system_instance.run()
-        logger.info(f"✅ system_instance.run() 완료 (결과: {success})")
+        print(f"✅ system_instance.run() 완료 (결과: {success})")
         
         if success:
-            logger.info("🎉 스크래핑 작업이 성공적으로 완료되었습니다.")
+            print("🎉 스크래핑 작업이 성공적으로 완료되었습니다.")
             return 0
         else:
-            logger.error("❌ 스크래핑 작업 중 오류가 발생했습니다.")
+            print("❌ 스크래핑 작업 중 오류가 발생했습니다.")
             return 1
             
     except ImportError as ie:
         # 클라우드타입 전용 클래스가 없는 경우 기본 클래스 사용
-        logger.warning("=" * 80)
-        logger.warning(f"⚠️ main_cloudtype 모듈을 찾을 수 없습니다")
-        logger.warning(f"  └─ 오류 상세: {ie}")
-        logger.warning("=" * 80)
-        logger.info("📦 대체 방안: 기본 DartScrapingSystem 클래스 사용")
+        print("=" * 80)
+        print(f"⚠️ main_cloudtype 모듈을 찾을 수 없습니다")
+        print(f"  └─ 오류 상세: {ie}")
+        print("=" * 80)
+        print("📦 대체 방안: 기본 DartScrapingSystem 클래스 사용")
         
         try:
-            logger.info("📦 [1/3] src.main 모듈 임포트 중...")
+            print("📦 [1/3] src.main 모듈 임포트 중...")
             from src.main import DartScrapingSystem
-            logger.info("✅ [1/3] DartScrapingSystem 임포트 완료")
+            print("✅ [1/3] DartScrapingSystem 임포트 완료")
             
-            logger.info("🔧 [2/3] 시스템 초기화 중...")
+            print("🔧 [2/3] 시스템 초기화 중...")
             system_instance = DartScrapingSystem()
-            logger.info("✅ [2/3] 시스템 초기화 완료")
+            print("✅ [2/3] 시스템 초기화 완료")
             
-            logger.info("▶️ [3/3] 시스템 실행 시작...")
+            print("▶️ [3/3] 시스템 실행 시작...")
             success = system_instance.run()
-            logger.info(f"✅ [3/3] 시스템 실행 완료 (결과: {success})")
+            print(f"✅ [3/3] 시스템 실행 완료 (결과: {success})")
             
             if success:
-                logger.info("🎉 실행 완료 - 성공")
+                print("🎉 실행 완료 - 성공")
             else:
-                logger.warning("⚠️ 실행 완료 - 일부 오류 발생")
+                print("⚠️ 실행 완료 - 일부 오류 발생")
             
             return 0 if success else 1
         
         except Exception as fallback_error:
-            logger.error(f"❌ 기본 클래스 실행 중에도 오류 발생: {fallback_error}")
+            print(f"❌ 기본 클래스 실행 중에도 오류 발생: {fallback_error}")
             import traceback
-            logger.error(traceback.format_exc())
+            print("===== Fallback 오류 스택 트레이스 =====")
+            print(traceback.format_exc())
+            print("="*50)
             return 1
         
     except Exception as e:
-        logger.error("=" * 80)
-        logger.error(f"❌ 시스템 실행 중 예상치 못한 오류 발생")
-        logger.error(f"  ├─ 오류 유형: {type(e).__name__}")
-        logger.error(f"  └─ 오류 메시지: {e}")
-        logger.error("=" * 80)
+        print("=" * 80)
+        print(f"❌ 시스템 실행 중 예상치 못한 오류 발생")
+        print(f"  ├─ 오류 유형: {type(e).__name__}")
+        print(f"  └─ 오류 메시지: {e}")
+        print("=" * 80)
         import traceback
-        logger.error("상세 스택 트레이스:")
-        logger.error(traceback.format_exc())
+        print("===== 상세 스택 트레이스 =====")
+        print(traceback.format_exc())
+        print("="*50)
         return 1
 
 def health_check():
@@ -202,29 +205,33 @@ def run_scheduler():
     스케줄러 실행 - 1분마다 스크래핑 시스템 실행
     클라우드타입에서 계속 돌아가면서 시장 개장 시간을 체크합니다.
     """
-    logger.info("📦 schedule 모듈 임포트 중...")
+    print("📦 schedule 모듈 임포트 중...")
     import schedule
-    logger.info("✅ schedule 모듈 임포트 완료")
+    print("✅ schedule 모듈 임포트 완료")
     
-    logger.info("⏰ 스케줄러 시작 - 1분마다 실행")
+    print("⏰ 스케줄러 시작 - 1분마다 실행")
     
     # 즉시 한 번 실행
-    logger.info("🚀 초기 실행 시작...")
+    print("🚀 초기 실행 시작...")
+    print("  ├─ run_scraping_system() 호출...")
     try:
         run_scraping_system()
-        logger.info("✅ 초기 실행 완료")
+        print("✅ 초기 실행 완료")
     except Exception as e:
-        logger.error(f"❌ 초기 실행 실패: {e}")
+        print(f"❌ 초기 실행 실패: {e}")
         import traceback
-        logger.error(traceback.format_exc())
+        print("===== 초기 실행 스택 트레이스 =====")
+        print(traceback.format_exc())
+        print("="*50)
     
     # 1분마다 실행하도록 스케줄 설정
-    logger.info("📅 스케줄 설정 중... (1분마다)")
+    print("📅 스케줄 설정 중... (1분마다)")
     schedule.every(1).minutes.do(run_scraping_system)
-    logger.info("✅ 스케줄 설정 완료")
+    print("✅ 스케줄 설정 완료")
     
     # 무한 루프로 스케줄 실행
-    logger.info("🔄 무한 루프 시작 - 스케줄 실행 대기 중...")
+    print("🔄 무한 루프 시작 - 스케줄 실행 대기 중...")
+    print("⏱️ 1분마다 자동으로 DART 스크래핑이 실행됩니다.")
     loop_count = 0
     while is_running:
         try:
@@ -232,14 +239,14 @@ def run_scheduler():
             time.sleep(1)  # 1초마다 체크
             loop_count += 1
             if loop_count % 60 == 0:  # 1분마다 로그
-                logger.debug(f"⏱️ 스케줄러 정상 작동 중... ({loop_count//60}분 경과)")
+                print(f"⏱️ 스케줄러 정상 작동 중... ({loop_count//60}분 경과)")
         except KeyboardInterrupt:
-            logger.info("⚠️ 스케줄러 중단 (KeyboardInterrupt)")
+            print("⚠️ 스케줄러 중단 (KeyboardInterrupt)")
             break
         except Exception as e:
-            logger.error(f"❌ 스케줄러 실행 중 오류: {e}")
+            print(f"❌ 스케줄러 실행 중 오류: {e}")
             import traceback
-            logger.error(traceback.format_exc())
+            print(traceback.format_exc())
             time.sleep(5)  # 오류 시 5초 대기 후 재시도
 
 def main():
