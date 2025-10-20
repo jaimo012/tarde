@@ -79,7 +79,7 @@ class PykrxStockDataClient:
         
         logger.info("pykrx 주식 데이터 클라이언트가 초기화되었습니다.")
     
-    def get_stock_ohlcv(self, stock_code: str, start_date: str, end_date: str) -> Optional[object]:
+    def get_stock_ohlcv(self, stock_code: str, start_date: str, end_date: str, retry_with_prev_day: bool = True) -> Optional[object]:
         """
         특정 기간의 주식 OHLCV 데이터를 조회합니다.
         
@@ -87,11 +87,14 @@ class PykrxStockDataClient:
             stock_code (str): 종목코드 (6자리)
             start_date (str): 시작일 (YYYYMMDD)
             end_date (str): 종료일 (YYYYMMDD)
+            retry_with_prev_day (bool): 데이터가 없을 때 전일로 재시도 여부
             
         Returns:
             Optional[pd.DataFrame]: OHLCV 데이터프레임 (실패 시 None)
         """
         try:
+            logger.debug(f"주식 OHLCV 조회 시도: {stock_code}, 기간: {start_date} ~ {end_date}")
+            
             df = stock.get_market_ohlcv_by_date(
                 fromdate=start_date,
                 todate=end_date,
@@ -102,10 +105,42 @@ class PykrxStockDataClient:
             if not df.empty:
                 df = df[df['시가'] != 0].copy()
             
-            return df if not df.empty else None
+            # 데이터가 없고 재시도 옵션이 켜져 있으면 전일로 재시도
+            if df.empty and retry_with_prev_day:
+                logger.warning(f"오늘({end_date}) 데이터 없음. 전일 기준으로 재시도...")
+                
+                # 전일 계산 (최대 5일 전까지)
+                from datetime import datetime, timedelta
+                end_dt = datetime.strptime(end_date, "%Y%m%d")
+                
+                for days_back in range(1, 6):
+                    prev_date = (end_dt - timedelta(days=days_back)).strftime("%Y%m%d")
+                    logger.debug(f"재시도 {days_back}일 전: {prev_date}")
+                    
+                    df = stock.get_market_ohlcv_by_date(
+                        fromdate=start_date,
+                        todate=prev_date,
+                        ticker=stock_code
+                    )
+                    
+                    if not df.empty:
+                        df = df[df['시가'] != 0].copy()
+                        
+                    if not df.empty:
+                        logger.info(f"✅ {prev_date} 날짜로 데이터 조회 성공 (오늘 데이터 미제공)")
+                        break
+            
+            if df.empty:
+                logger.warning(f"주식 OHLCV 조회 결과 없음 ({stock_code}, {start_date}~{end_date})")
+                return None
+            
+            logger.debug(f"데이터 조회 성공: {len(df)}일치 ({stock_code})")
+            return df
             
         except Exception as e:
             logger.error(f"주식 OHLCV 조회 실패 ({stock_code}): {e}")
+            import traceback
+            logger.debug(f"상세 오류:\n{traceback.format_exc()}")
             return None
     
     def get_current_price(self, stock_code: str) -> Optional[Dict]:
@@ -146,7 +181,7 @@ class PykrxStockDataClient:
             logger.error(f"현재가 조회 중 오류 ({stock_code}): {e}")
             return None
     
-    def get_market_index(self, market_type: str, start_date: str, end_date: str) -> Optional[object]:
+    def get_market_index(self, market_type: str, start_date: str, end_date: str, retry_with_prev_day: bool = True) -> Optional[object]:
         """
         시장 지수 데이터를 조회합니다.
         
@@ -154,6 +189,7 @@ class PykrxStockDataClient:
             market_type (str): 시장 구분 (KOSPI 또는 KOSDAQ)
             start_date (str): 시작일 (YYYYMMDD)
             end_date (str): 종료일 (YYYYMMDD)
+            retry_with_prev_day (bool): 데이터가 없을 때 전일로 재시도 여부
             
         Returns:
             Optional[pd.DataFrame]: 지수 데이터프레임 (실패 시 None)
@@ -162,25 +198,57 @@ class PykrxStockDataClient:
             # KOSPI: "KOSPI", KOSDAQ: "KOSDAQ"
             index_name = "KOSPI" if market_type == "KOSPI" else "KOSDAQ"
             
+            logger.debug(f"시장지수 조회 시도: {index_name}, 기간: {start_date} ~ {end_date}")
+            
             df = stock.get_index_ohlcv_by_date(
                 fromdate=start_date,
                 todate=end_date,
                 ticker=index_name
             )
             
-            return df if not df.empty else None
+            # 데이터가 없고 재시도 옵션이 켜져 있으면 전일로 재시도
+            if df.empty and retry_with_prev_day:
+                logger.warning(f"오늘({end_date}) 지수 데이터 없음. 전일 기준으로 재시도...")
+                
+                # 전일 계산 (최대 5일 전까지)
+                from datetime import datetime, timedelta
+                end_dt = datetime.strptime(end_date, "%Y%m%d")
+                
+                for days_back in range(1, 6):
+                    prev_date = (end_dt - timedelta(days=days_back)).strftime("%Y%m%d")
+                    logger.debug(f"재시도 {days_back}일 전: {prev_date}")
+                    
+                    df = stock.get_index_ohlcv_by_date(
+                        fromdate=start_date,
+                        todate=prev_date,
+                        ticker=index_name
+                    )
+                    
+                    if not df.empty:
+                        logger.info(f"✅ {prev_date} 날짜로 지수 데이터 조회 성공 (오늘 데이터 미제공)")
+                        break
+            
+            if df.empty:
+                logger.warning(f"시장지수 조회 결과 없음 ({index_name}, {start_date}~{end_date})")
+                return None
+            
+            logger.debug(f"지수 데이터 조회 성공: {len(df)}일치 ({index_name})")
+            return df
             
         except Exception as e:
             logger.error(f"시장지수 조회 실패 ({market_type}): {e}")
+            import traceback
+            logger.debug(f"상세 오류:\n{traceback.format_exc()}")
             return None
     
-    def get_market_cap(self, stock_code: str, date: str = None) -> Optional[int]:
+    def get_market_cap(self, stock_code: str, date: str = None, retry_with_prev_day: bool = True) -> Optional[int]:
         """
         특정 종목의 시가총액을 조회합니다.
         
         Args:
             stock_code (str): 종목코드 (6자리)
             date (str): 조회 날짜 (YYYYMMDD), None이면 오늘
+            retry_with_prev_day (bool): 데이터가 없을 때 전일로 재시도 여부
             
         Returns:
             Optional[int]: 시가총액 (억원 단위, 실패 시 None)
@@ -189,6 +257,8 @@ class PykrxStockDataClient:
             if date is None:
                 date = datetime.now().strftime("%Y%m%d")
             
+            logger.debug(f"시가총액 조회 시도: {stock_code}, 날짜: {date}")
+            
             # 시가총액 조회 (원 단위)
             market_cap_raw = stock.get_market_cap_by_date(
                 fromdate=date,
@@ -196,17 +266,42 @@ class PykrxStockDataClient:
                 ticker=stock_code
             )
             
+            # 데이터가 없고 재시도 옵션이 켜져 있으면 전일로 재시도
+            if (market_cap_raw is None or market_cap_raw.empty) and retry_with_prev_day:
+                logger.warning(f"오늘({date}) 시가총액 데이터 없음. 전일 기준으로 재시도...")
+                
+                # 전일 계산 (최대 5일 전까지)
+                date_dt = datetime.strptime(date, "%Y%m%d")
+                
+                for days_back in range(1, 6):
+                    prev_date = (date_dt - timedelta(days=days_back)).strftime("%Y%m%d")
+                    logger.debug(f"재시도 {days_back}일 전: {prev_date}")
+                    
+                    market_cap_raw = stock.get_market_cap_by_date(
+                        fromdate=prev_date,
+                        todate=prev_date,
+                        ticker=stock_code
+                    )
+                    
+                    if market_cap_raw is not None and not market_cap_raw.empty:
+                        logger.info(f"✅ {prev_date} 날짜로 시가총액 조회 성공 (오늘 데이터 미제공)")
+                        break
+            
             if market_cap_raw is None or market_cap_raw.empty:
+                logger.warning(f"시가총액 조회 결과 없음 ({stock_code}, {date})")
                 return None
             
             # 시가총액을 억원 단위로 변환
             latest_cap = market_cap_raw.iloc[-1]['시가총액']
             market_cap_eok = int(latest_cap / 100000000)
             
+            logger.debug(f"시가총액 조회 성공: {market_cap_eok:,}억원 ({stock_code})")
             return market_cap_eok
             
         except Exception as e:
             logger.error(f"시가총액 조회 실패 ({stock_code}): {e}")
+            import traceback
+            logger.debug(f"상세 오류:\n{traceback.format_exc()}")
             return None
 
 
@@ -359,16 +454,24 @@ class StockAnalyzer:
             start_date = (datetime.now() - timedelta(days=150)).strftime("%Y%m%d")
             
             # 1. 주식 데이터 조회 (100일치 이상)
+            logger.info(f"  → 1단계: 주식 OHLCV 데이터 조회 중... (최근 150일)")
             stock_df = self.pykrx_client.get_stock_ohlcv(stock_code, start_date, today)
             if stock_df is None or stock_df.empty:
+                error_msg = f"주식 데이터 조회 실패 - pykrx API에서 데이터를 가져올 수 없습니다. 종목코드({stock_code})가 정확한지 확인하세요."
+                logger.error(f"  ❌ {error_msg}")
                 return self._create_error_result(stock_code, stock_name, industry_code, 
-                                                 industry_name, is_target_industry, "주식 데이터 조회 실패")
+                                                 industry_name, is_target_industry, error_msg)
+            
+            logger.info(f"  ✅ 주식 데이터 조회 성공: {len(stock_df)}일치")
             
             # 2. 현재가 정보
+            logger.info(f"  → 2단계: 현재가 정보 조회 중...")
             current_price_info = self.pykrx_client.get_current_price(stock_code)
             if not current_price_info:
+                error_msg = f"현재가 조회 실패 - 최근 5일 거래 데이터가 없습니다. 거래정지 종목일 가능성이 있습니다."
+                logger.error(f"  ❌ {error_msg}")
                 return self._create_error_result(stock_code, stock_name, industry_code,
-                                                 industry_name, is_target_industry, "현재가 조회 실패")
+                                                 industry_name, is_target_industry, error_msg)
             
             current_price = current_price_info['close']
             opening_price = current_price_info['open']
@@ -379,35 +482,55 @@ class StockAnalyzer:
             else:
                 price_change_rate = 0.0
             
+            logger.info(f"  ✅ 현재가 조회 성공: {current_price:,}원 (시가: {opening_price:,}원)")
+            
             # 3. 시가총액 조회
+            logger.info(f"  → 3단계: 시가총액 조회 중...")
             market_cap = self.pykrx_client.get_market_cap(stock_code)
             if market_cap is None:
+                logger.warning(f"  ⚠️ pykrx에서 시가총액 조회 실패 - 계산으로 대체 시도")
                 # 시가총액을 직접 계산 (상장주식수 * 현재가)
                 listed_shares = self._parse_number(contract_data.get('상장주식수', '0'))
                 if listed_shares > 0:
                     market_cap = (current_price * listed_shares) // 100000000
+                    logger.info(f"  ✅ 시가총액 계산 완료: {market_cap:,}억원")
                 else:
                     market_cap = 0
+                    logger.warning(f"  ⚠️ 상장주식수 정보 없음 - 시가총액 0으로 설정")
+            else:
+                logger.info(f"  ✅ 시가총액 조회 성공: {market_cap:,}억원")
             
             # 4. 시장 지수 데이터 조회
+            logger.info(f"  → 4단계: 시장 지수({market_type}) 데이터 조회 중...")
             index_df = self.pykrx_client.get_market_index(market_type, start_date, today)
             if index_df is None or index_df.empty:
+                error_msg = f"시장지수 조회 실패 - {market_type} 지수 데이터를 가져올 수 없습니다."
+                logger.error(f"  ❌ {error_msg}")
                 return self._create_error_result(stock_code, stock_name, industry_code,
-                                                 industry_name, is_target_industry, "시장지수 조회 실패")
+                                                 industry_name, is_target_industry, error_msg)
+            
+            logger.info(f"  ✅ 시장 지수 조회 성공: {len(index_df)}일치")
             
             # 5. 차트 생성 (최근 20일 표시, 100일 데이터 사용)
+            logger.info(f"  → 5단계: 주식 차트 생성 중...")
             chart_path = self.chart_generator.create_candlestick_chart(
                 stock_code, stock_name, stock_df, days_to_show=20
             )
             
+            if chart_path:
+                logger.info(f"  ✅ 차트 생성 완료: {chart_path}")
+            else:
+                logger.warning(f"  ⚠️ 차트 생성 실패 (차트 없이 계속 진행)")
+            
             # 6. 분석 수행
+            logger.info(f"  → 6단계: 투자 점수 분석 수행 중...")
             analysis_result = self._perform_analysis(
                 stock_code, stock_name, market_type, industry_code, industry_name, is_target_industry,
                 current_price, opening_price, price_change_rate, market_cap,
                 contract_amount, recent_sales, stock_df, index_df, current_price_info, chart_path
             )
             
-            logger.info(f"종목 분석 완료: {stock_name} (점수: {analysis_result.recommendation_score}/10)")
+            logger.info(f"✅ 종목 분석 완료: {stock_name} (투자 점수: {analysis_result.recommendation_score}/10)")
             return analysis_result
             
         except Exception as e:
