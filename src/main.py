@@ -28,29 +28,38 @@ class DartScrapingSystem:
     
     def __init__(self):
         """시스템 컴포넌트들을 초기화합니다."""
+        print("🚀 DART 스크래핑 및 자동매매 시스템 초기화 시작")
         logger.info("="*80)
         logger.info("🚀 DART 스크래핑 및 자동매매 시스템 초기화 시작")
         logger.info("="*80)
         
+        print("  ├─ DART API 클라이언트 초기화 중...")
         self.dart_client = DartApiClient()
+        print("  ├─ 보고서 분석기 초기화 중...")
         self.analyzer = ReportAnalyzer()
+        print("  ├─ 구글 시트 클라이언트 초기화 중...")
         self.sheets_client = GoogleSheetsClient()
+        print("  ├─ 슬랙 알림 클라이언트 초기화 중...")
         self.slack_notifier = SlackNotifier(SLACK_WEBHOOK_URL)
         
         # 통합 오류 처리기 초기화
+        print("  ├─ 통합 오류 처리기 초기화 중...")
         initialize_error_handler(self.sheets_client, self.slack_notifier)
         self.error_handler = get_error_handler()
         logger.info("✅ 통합 오류 처리기 초기화 완료")
         
         # 자동매매 시스템 초기화
+        print("  ├─ 자동매매 시스템 초기화 중...")
         self.auto_trading = AutoTradingSystem(self.sheets_client, self.slack_notifier)
         
         # 로깅 설정
+        print("  ├─ 로깅 설정 중...")
         self._setup_logging()
         
         # 중복 실행 방지 락
         self.lock_file = "logs/trading.lock"
         
+        print("✅ DART 스크래핑 및 자동매매 시스템 초기화 완료!")
         logger.info("✅ DART 스크래핑 및 자동매매 시스템이 초기화되었습니다.")
         logger.info("="*80)
     
@@ -79,11 +88,15 @@ class DartScrapingSystem:
         Returns:
             bool: 실행 성공 여부
         """
+        print("🔄 DartScrapingSystem.run() 메서드 실행 시작")
         logger.info("🚀 DART 공시 스크래핑 및 구글 시트 저장 자동화를 시작합니다.")
         
         try:
-            return self._run_with_error_handling()
+            result = self._run_with_error_handling()
+            print(f"✅ DartScrapingSystem.run() 완료 (결과: {result})")
+            return result
         except Exception as e:
+            print(f"❌ DartScrapingSystem.run() 예외 발생: {e}")
             # 전역 예외 처리 - 모든 예상치 못한 오류 캐치
             self._handle_critical_error("시스템 전체 실행 실패", e)
             return False
@@ -100,30 +113,43 @@ class DartScrapingSystem:
             # self._send_startup_notification()
             
             # 1단계: 시장 개장 여부 확인
+            print("📊 [1/6] 시장 개장 여부 확인 중...")
             should_run, market_status = should_run_dart_scraping()
+            print(f"  └─ 시장 상태: {market_status}")
             logger.info(f"📊 시장 상태: {market_status}")
             
             if not should_run:
+                print("⏸️ 시장이 휴장 중이므로 스크래핑을 건너뜁니다.")
                 logger.info("⏸️ 시장이 휴장 중이므로 스크래핑을 건너뜁니다.")
                 # 시스템은 정상 작동 중이지만 휴장일이므로 대기
                 return True  # 정상적인 스킵이므로 True 반환
             
+            print("✅ 시장 개장 중! DART 스크래핑 진행합니다.")
             logger.info("✅ 시장 개장 중이므로 스크래핑을 진행합니다.")
             
             # 2단계: 구글 스프레드시트 연결
+            print("📊 [2/6] 구글 스프레드시트 연결 중...")
             if not self._connect_to_sheets():
+                print("❌ 구글 시트 연결 실패")
                 return False
+            print("✅ 구글 시트 연결 성공")
             
             # 3단계: 기존 데이터 로드
+            print("📊 [3/6] 기존 데이터 로드 중...")
             existing_reports, company_list = self._load_existing_data()
             if company_list is None:
+                print("❌ 기존 데이터 로드 실패")
                 return False
+            print(f"✅ 기존 데이터 로드 완료 (회사 {len(company_list)}개)")
             
             # 4단계: 각 회사별 공시 처리
+            print(f"📊 [4/6] {len(company_list)}개 회사의 DART 공시 처리 시작...")
             total_new_contracts = self._process_companies(company_list, existing_reports)
+            print(f"✅ 공시 처리 완료 (신규 계약: {total_new_contracts}건)")
             
             # 5단계: 완료 알림
             completion_message = f"🏁 모든 회사에 대한 분석 및 저장이 완료되었습니다. (신규 계약: {total_new_contracts}건)"
+            print(completion_message)
             logger.info(completion_message)
             
             # 신규 계약이 있을 때만 완료 알림 전송 (의미있는 정보만)
@@ -136,13 +162,17 @@ class DartScrapingSystem:
             
             # 6단계: 보유 포지션 관리 (자동매매 활성화 시)
             if is_market_open():
+                print("📊 [6/6] 보유 포지션 관리 시작...")
                 logger.info("보유 포지션 관리를 시작합니다...")
                 try:
                     self.auto_trading.manage_positions()
+                    print("✅ 포지션 관리 완료")
                 except Exception as e:
+                    print(f"⚠️ 포지션 관리 중 오류: {e}")
                     logger.error(f"포지션 관리 중 오류 발생: {e}")
                     # 포지션 관리 실패는 시스템을 중단시키지 않음
             
+            print("🎉 전체 프로세스 완료!")
             return True
             
         except Exception as e:

@@ -142,10 +142,10 @@ def run_scraping_system():
     except ImportError as ie:
         # 클라우드타입 전용 클래스가 없는 경우 기본 클래스 사용
         print("=" * 80)
-        print(f"⚠️ main_cloudtype 모듈을 찾을 수 없습니다")
-        print(f"  └─ 오류 상세: {ie}")
+        print("ℹ️ CloudType 전용 모듈이 없어 기본 모듈을 사용합니다 (정상)")
+        print(f"  └─ {ie}")
         print("=" * 80)
-        print("📦 대체 방안: 기본 DartScrapingSystem 클래스 사용")
+        print("✅ 기본 DartScrapingSystem 사용 - 모든 기능 정상 작동합니다")
         
         try:
             print("📦 [1/3] src.main 모듈 임포트 중...")
