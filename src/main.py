@@ -223,6 +223,9 @@ class DartScrapingSystem:
         total_new_contracts = 0
         failed_companies = []
         
+        print(f"\n{'='*80}")
+        print(f"📊 회사별 공시 처리 시작 (총 {total_companies}개 회사)")
+        print(f"{'='*80}\n")
         logger.info(f"\n{'='*60}")
         logger.info(f"📊 회사별 공시 처리 시작 (총 {total_companies}개 회사)")
         logger.info(f"{'='*60}")
@@ -230,13 +233,22 @@ class DartScrapingSystem:
         for index, company_row in company_list.iterrows():
             corp_code = company_row['조회코드']
             corp_name = company_row['종목명']
+            progress = ((index+1)/total_companies*100)
+            
+            # 진행 바 생성 (20칸)
+            bar_length = 20
+            filled = int(bar_length * (index+1) / total_companies)
+            bar = '█' * filled + '░' * (bar_length - filled)
+            
+            # 실시간 진행 상황 표시 (한 줄로 계속 업데이트)
+            print(f"\r🔍 [{index+1}/{total_companies}] {bar} {progress:.1f}% | 조회 중: {corp_name[:15]:15s}...", end="", flush=True)
             
             logger.info(f"\n🔎 [{index+1}/{total_companies}] '{corp_name}'({corp_code}) 처리 시작...")
             self.error_handler.log_operation(
                 module="공시 처리",
                 operation=f"{corp_name} 분석",
                 status="시작",
-                details=f"진행률: {((index+1)/total_companies*100):.1f}%"
+                details=f"진행률: {progress:.1f}%"
             )
             
             try:
@@ -249,6 +261,15 @@ class DartScrapingSystem:
                 saved_contracts = self._save_company_results(corp_name, new_contracts, new_excluded)
                 total_new_contracts += saved_contracts
                 
+                # 결과 출력 (신규 계약이 있거나 오류가 있을 때만)
+                if saved_contracts > 0:
+                    print(f"\r✅ [{index+1}/{total_companies}] {corp_name[:20]:20s} → 🎉 신규 계약 {saved_contracts}건 발견!     ")
+                elif len(new_excluded) > 0:
+                    print(f"\r⚠️ [{index+1}/{total_companies}] {corp_name[:20]:20s} → 분석제외 {len(new_excluded)}건           ")
+                else:
+                    # 신규 없으면 다음 회사로 (줄 유지)
+                    pass
+                
                 self.error_handler.log_operation(
                     module="공시 처리",
                     operation=f"{corp_name} 분석",
@@ -257,6 +278,7 @@ class DartScrapingSystem:
                 )
                 
             except Exception as e:
+                print(f"\r❌ [{index+1}/{total_companies}] {corp_name[:20]:20s} → 오류 발생: {str(e)[:30]}...     ")
                 logger.error(f"❌ 회사 '{corp_name}' 처리 중 오류 발생: {e}")
                 failed_companies.append(corp_name)
                 
@@ -272,7 +294,20 @@ class DartScrapingSystem:
                 )
                 continue
         
+        # 마지막 진행 상황 줄바꿈
+        print()
+        
         # 최종 요약
+        print(f"\n{'='*80}")
+        print(f"📊 회사별 공시 처리 완료")
+        print(f"  ├─ 총 처리: {total_companies}개")
+        print(f"  ├─ 성공: {total_companies - len(failed_companies)}개")
+        print(f"  ├─ 실패: {len(failed_companies)}개")
+        print(f"  └─ 신규 계약: {total_new_contracts}건 {'🎉' if total_new_contracts > 0 else ''}")
+        if failed_companies:
+            print(f"⚠️ 실패한 회사: {', '.join(failed_companies[:5])}")  # 최대 5개만 표시
+        print(f"{'='*80}\n")
+        
         logger.info(f"\n{'='*60}")
         logger.info(f"📊 회사별 공시 처리 완료")
         logger.info(f"  ├─ 총 처리: {total_companies}개")
