@@ -230,21 +230,22 @@ class DartScrapingSystem:
         logger.info(f"📊 회사별 공시 처리 시작 (총 {total_companies}개 회사)")
         logger.info(f"{'='*60}")
         
-        for index, company_row in company_list.iterrows():
+        for idx, (index, company_row) in enumerate(company_list.iterrows()):
             corp_code = company_row['조회코드']
             corp_name = company_row['종목명']
-            progress = ((index+1)/total_companies*100)
+            current_num = idx + 1  # 1부터 시작하는 현재 번호
+            progress = (current_num / total_companies * 100)
             
             # 진행 바 생성 (20칸)
             bar_length = 20
-            filled = int(bar_length * (index+1) / total_companies)
+            filled = int(bar_length * current_num / total_companies)
             bar = '█' * filled + '░' * (bar_length - filled)
             
             # 10개마다 또는 첫 번째/마지막 회사일 때 진행 상황 출력
-            if (index+1) % 10 == 0 or index == 0 or (index+1) == total_companies:
-                print(f"🔍 [{index+1}/{total_companies}] {bar} {progress:.1f}% | 최근: {corp_name[:15]}...")
+            if current_num % 10 == 0 or idx == 0 or current_num == total_companies:
+                print(f"🔍 [{current_num}/{total_companies}] {bar} {progress:.1f}% | 최근: {corp_name[:15]}...")
             
-            logger.info(f"\n🔎 [{index+1}/{total_companies}] '{corp_name}'({corp_code}) 처리 시작...")
+            logger.info(f"\n🔎 [{current_num}/{total_companies}] '{corp_name}'({corp_code}) 처리 시작...")
             self.error_handler.log_operation(
                 module="공시 처리",
                 operation=f"{corp_name} 분석",
@@ -264,9 +265,9 @@ class DartScrapingSystem:
                 
                 # 중요한 결과만 즉시 출력
                 if saved_contracts > 0:
-                    print(f"  ✅ [{index+1}] {corp_name[:20]:20s} → 🎉 신규 계약 {saved_contracts}건 발견!")
+                    print(f"  ✅ [{current_num}] {corp_name[:20]:20s} → 🎉 신규 계약 {saved_contracts}건 발견!")
                 elif len(new_excluded) > 0:
-                    print(f"  ⚠️ [{index+1}] {corp_name[:20]:20s} → 분석제외 {len(new_excluded)}건")
+                    print(f"  ⚠️ [{current_num}] {corp_name[:20]:20s} → 분석제외 {len(new_excluded)}건")
                 # 신규 없으면 출력 안 함 (로그만)
                 
                 self.error_handler.log_operation(
@@ -277,7 +278,7 @@ class DartScrapingSystem:
                 )
                 
             except Exception as e:
-                print(f"  ❌ [{index+1}] {corp_name[:20]:20s} → 오류: {str(e)[:40]}...")
+                print(f"  ❌ [{current_num}] {corp_name[:20]:20s} → 오류: {str(e)[:40]}...")
                 logger.error(f"❌ 회사 '{corp_name}' 처리 중 오류 발생: {e}")
                 failed_companies.append(corp_name)
                 
