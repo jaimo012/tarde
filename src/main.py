@@ -20,6 +20,7 @@ from src.google_sheets.client import GoogleSheetsClient
 from src.utils.slack_notifier import SlackNotifier
 from src.utils.market_schedule import should_run_dart_scraping, get_market_status, is_market_open
 from src.trading.auto_trading_system import AutoTradingSystem
+from src.utils.error_handler import initialize_error_handler, get_error_handler
 
 
 class DartScrapingSystem:
@@ -27,10 +28,19 @@ class DartScrapingSystem:
     
     def __init__(self):
         """시스템 컴포넌트들을 초기화합니다."""
+        logger.info("="*80)
+        logger.info("🚀 DART 스크래핑 및 자동매매 시스템 초기화 시작")
+        logger.info("="*80)
+        
         self.dart_client = DartApiClient()
         self.analyzer = ReportAnalyzer()
         self.sheets_client = GoogleSheetsClient()
         self.slack_notifier = SlackNotifier(SLACK_WEBHOOK_URL)
+        
+        # 통합 오류 처리기 초기화
+        initialize_error_handler(self.sheets_client, self.slack_notifier)
+        self.error_handler = get_error_handler()
+        logger.info("✅ 통합 오류 처리기 초기화 완료")
         
         # 자동매매 시스템 초기화
         self.auto_trading = AutoTradingSystem(self.sheets_client, self.slack_notifier)
@@ -41,7 +51,8 @@ class DartScrapingSystem:
         # 중복 실행 방지 락
         self.lock_file = "logs/trading.lock"
         
-        logger.info("DART 스크래핑 및 자동매매 시스템이 초기화되었습니다.")
+        logger.info("✅ DART 스크래핑 및 자동매매 시스템이 초기화되었습니다.")
+        logger.info("="*80)
     
     def _setup_logging(self):
         """로깅 설정을 초기화합니다."""
@@ -180,12 +191,23 @@ class DartScrapingSystem:
         """각 회사별로 공시를 처리합니다."""
         total_companies = len(company_list)
         total_new_contracts = 0
+        failed_companies = []
+        
+        logger.info(f"\n{'='*60}")
+        logger.info(f"📊 회사별 공시 처리 시작 (총 {total_companies}개 회사)")
+        logger.info(f"{'='*60}")
         
         for index, company_row in company_list.iterrows():
             corp_code = company_row['조회코드']
             corp_name = company_row['종목명']
             
-            logger.info(f"🔎 [{index+1}/{total_companies}] '{corp_name}'({corp_code}) 처리 시작...")
+            logger.info(f"\n🔎 [{index+1}/{total_companies}] '{corp_name}'({corp_code}) 처리 시작...")
+            self.error_handler.log_operation(
+                module="공시 처리",
+                operation=f"{corp_name} 분석",
+                status="시작",
+                details=f"진행률: {((index+1)/total_companies*100):.1f}%"
+            )
             
             try:
                 # 회사별 공시 처리
@@ -197,11 +219,39 @@ class DartScrapingSystem:
                 saved_contracts = self._save_company_results(corp_name, new_contracts, new_excluded)
                 total_new_contracts += saved_contracts
                 
+                self.error_handler.log_operation(
+                    module="공시 처리",
+                    operation=f"{corp_name} 분석",
+                    status="완료",
+                    details=f"신규 계약: {saved_contracts}건, 제외: {len(new_excluded)}건"
+                )
+                
             except Exception as e:
-                logger.error(f"회사 '{corp_name}' 처리 중 오류 발생: {e}")
-                # 중요한 오류만 슬랙 알림 (개별 회사 오류는 로그만)
-                # 개별 회사 처리 오류는 시스템 전체에 영향을 주지 않으므로 슬랙 스팸 방지
+                logger.error(f"❌ 회사 '{corp_name}' 처리 중 오류 발생: {e}")
+                failed_companies.append(corp_name)
+                
+                # 오류 처리 (시트 기록 + 로그, 슬랙 알림은 생략)
+                self.error_handler.handle_error(
+                    error=e,
+                    module="공시 처리",
+                    operation=f"{corp_name} 공시 분석",
+                    severity='WARNING',
+                    related_stock=f"{corp_name}({corp_code})",
+                    send_slack=False,  # 개별 회사 오류는 슬랙 스팸 방지
+                    log_to_sheet=True
+                )
                 continue
+        
+        # 최종 요약
+        logger.info(f"\n{'='*60}")
+        logger.info(f"📊 회사별 공시 처리 완료")
+        logger.info(f"  ├─ 총 처리: {total_companies}개")
+        logger.info(f"  ├─ 성공: {total_companies - len(failed_companies)}개")
+        logger.info(f"  ├─ 실패: {len(failed_companies)}개")
+        logger.info(f"  └─ 신규 계약: {total_new_contracts}건")
+        if failed_companies:
+            logger.warning(f"⚠️ 실패한 회사: {', '.join(failed_companies)}")
+        logger.info(f"{'='*60}\n")
         
         return total_new_contracts
     
@@ -214,10 +264,34 @@ class DartScrapingSystem:
         new_excluded = []
         
         # 1단계: 공시 검색
+        logger.info(f"  → 1단계: DART API 공시 검색 중...")
+        self.error_handler.log_api_call(
+            api_name="DART API",
+            endpoint="/api/list.json",
+            method="GET",
+            params={'corp_code': corp_code},
+            status='시작'
+        )
+        
         disclosures = self.dart_client.search_disclosures_all_pages(corp_code)
+        
         if not disclosures:
-            logger.info(f" -> '{corp_name}'의 관련 공시를 찾지 못했습니다.")
+            logger.info(f"  ✅ 공시 검색 완료 → 관련 공시 없음")
+            self.error_handler.log_api_call(
+                api_name="DART API",
+                endpoint="/api/list.json",
+                status='성공',
+                response_code=200
+            )
             return new_contracts, new_excluded
+        
+        logger.info(f"  ✅ 공시 검색 완료 → {len(disclosures)}개 발견")
+        self.error_handler.log_api_call(
+            api_name="DART API",
+            endpoint="/api/list.json",
+            status='성공',
+            response_code=200
+        )
         
         # 2단계: 각 공시별 처리
         for disclosure in disclosures:
