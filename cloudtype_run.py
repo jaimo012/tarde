@@ -108,7 +108,21 @@ def setup_signal_handlers():
 print("✅ [4/5] 함수 정의 완료")
 
 def run_scraping_system():
-    """스크래핑 시스템 실행"""
+    """
+    DART 스크래핑 시스템을 실행합니다.
+    
+    이 함수는 다음 순서로 시스템을 실행합니다:
+    1. src.main_cloudtype 모듈 임포트 시도 (없으면 기본 모듈 사용)
+    2. DartScrapingSystem 인스턴스 생성
+    3. 시스템 실행 (run 메서드 호출)
+    
+    Returns:
+        int: 종료 코드 (0: 성공, 1: 실패)
+        
+    Note:
+        - CloudType 전용 모듈이 없으면 자동으로 기본 모듈로 fallback
+        - 모든 단계마다 진행 상황을 print로 출력 (즉시 확인 가능)
+    """
     global system_instance
     
     print("=" * 80)
@@ -202,8 +216,19 @@ def health_check():
 
 def run_scheduler():
     """
-    스케줄러 실행 - 1분마다 스크래핑 시스템 실행
-    클라우드타입에서 계속 돌아가면서 시장 개장 시간을 체크합니다.
+    스케줄러를 실행하여 1분마다 DART 스크래핑 시스템을 자동 실행합니다.
+    
+    이 함수는 다음 작업을 수행합니다:
+    1. schedule 모듈 임포트
+    2. 즉시 1회 실행 (초기 실행)
+    3. 1분마다 자동 실행되도록 스케줄 설정
+    4. 무한 루프로 스케줄 실행 (is_running이 True인 동안)
+    
+    Note:
+        - 클라우드타입에서 컨테이너가 종료되지 않도록 무한 루프 유지
+        - 시장 개장 여부는 run_scraping_system() 내부에서 확인
+        - 1분마다 스케줄러 상태를 로그로 출력
+        - KeyboardInterrupt나 시그널로 우아하게 종료 가능
     """
     print("📦 schedule 모듈 임포트 중...")
     import schedule
@@ -250,7 +275,23 @@ def run_scheduler():
             time.sleep(5)  # 오류 시 5초 대기 후 재시도
 
 def main():
-    """메인 실행 함수"""
+    """
+    클라우드타입 DART 스크래핑 시스템의 메인 실행 함수입니다.
+    
+    실행 순서:
+    1. 로거 초기화 확인 및 시스템 정보 출력
+    2. 시그널 핸들러 설정 (우아한 종료를 위해)
+    3. 헬스체크 실행
+    4. 스케줄러 시작 (1분마다 자동 실행)
+    
+    Returns:
+        int: 종료 코드 (0: 정상 종료, 1: 오류 발생)
+        
+    Note:
+        - 모든 단계마다 진행 상황을 print와 logger로 동시 출력
+        - 오류 발생 시 상세한 스택 트레이스 출력
+        - 무한 루프로 실행되므로 Ctrl+C나 시그널로 종료
+    """
     print("🎯 main() 함수 시작!")
     
     try:
