@@ -240,8 +240,9 @@ class DartScrapingSystem:
             filled = int(bar_length * (index+1) / total_companies)
             bar = '█' * filled + '░' * (bar_length - filled)
             
-            # 실시간 진행 상황 표시 (한 줄로 계속 업데이트)
-            print(f"\r🔍 [{index+1}/{total_companies}] {bar} {progress:.1f}% | 조회 중: {corp_name[:15]:15s}...", end="", flush=True)
+            # 10개마다 또는 첫 번째/마지막 회사일 때 진행 상황 출력
+            if (index+1) % 10 == 0 or index == 0 or (index+1) == total_companies:
+                print(f"🔍 [{index+1}/{total_companies}] {bar} {progress:.1f}% | 최근: {corp_name[:15]}...")
             
             logger.info(f"\n🔎 [{index+1}/{total_companies}] '{corp_name}'({corp_code}) 처리 시작...")
             self.error_handler.log_operation(
@@ -261,14 +262,12 @@ class DartScrapingSystem:
                 saved_contracts = self._save_company_results(corp_name, new_contracts, new_excluded)
                 total_new_contracts += saved_contracts
                 
-                # 결과 출력 (신규 계약이 있거나 오류가 있을 때만)
+                # 중요한 결과만 즉시 출력
                 if saved_contracts > 0:
-                    print(f"\r✅ [{index+1}/{total_companies}] {corp_name[:20]:20s} → 🎉 신규 계약 {saved_contracts}건 발견!     ")
+                    print(f"  ✅ [{index+1}] {corp_name[:20]:20s} → 🎉 신규 계약 {saved_contracts}건 발견!")
                 elif len(new_excluded) > 0:
-                    print(f"\r⚠️ [{index+1}/{total_companies}] {corp_name[:20]:20s} → 분석제외 {len(new_excluded)}건           ")
-                else:
-                    # 신규 없으면 다음 회사로 (줄 유지)
-                    pass
+                    print(f"  ⚠️ [{index+1}] {corp_name[:20]:20s} → 분석제외 {len(new_excluded)}건")
+                # 신규 없으면 출력 안 함 (로그만)
                 
                 self.error_handler.log_operation(
                     module="공시 처리",
@@ -278,7 +277,7 @@ class DartScrapingSystem:
                 )
                 
             except Exception as e:
-                print(f"\r❌ [{index+1}/{total_companies}] {corp_name[:20]:20s} → 오류 발생: {str(e)[:30]}...     ")
+                print(f"  ❌ [{index+1}] {corp_name[:20]:20s} → 오류: {str(e)[:40]}...")
                 logger.error(f"❌ 회사 '{corp_name}' 처리 중 오류 발생: {e}")
                 failed_companies.append(corp_name)
                 
