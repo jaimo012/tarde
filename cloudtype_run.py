@@ -246,44 +246,70 @@ def main():
     """메인 실행 함수"""
     print("🎯 main() 함수 시작!")
     
-    logger.info("=" * 80)
-    logger.info("🌥️ 클라우드타입 DART 스크래핑 및 자동매매 시스템")
-    logger.info(f"환경: {'프로덕션' if IS_PRODUCTION else '개발'}")
-    logger.info(f"포트: {CLOUDTYPE_CONFIG['port']}")
-    logger.info("=" * 80)
+    try:
+        print("  ├─ logger.info() 호출 테스트 중...")
+        logger.info("=" * 80)
+        logger.info("🌥️ 클라우드타입 DART 스크래핑 및 자동매매 시스템")
+        logger.info(f"환경: {'프로덕션' if IS_PRODUCTION else '개발'}")
+        logger.info(f"포트: {CLOUDTYPE_CONFIG['port']}")
+        logger.info("=" * 80)
+        print("  ├─ logger.info() 성공")
+    except Exception as e:
+        print(f"  └─ ❌ logger.info() 실패: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return 1
     
     # 시그널 핸들러 설정
-    logger.info("🔧 시그널 핸들러 설정 중...")
-    setup_signal_handlers()
+    print("  ├─ 시그널 핸들러 설정 중...")
+    try:
+        logger.info("🔧 시그널 핸들러 설정 중...")
+        setup_signal_handlers()
+        print("  ├─ 시그널 핸들러 설정 완료")
+    except Exception as e:
+        print(f"  └─ ❌ 시그널 핸들러 설정 실패: {e}")
+        return 1
     
     try:
         # 초기 헬스체크
+        print("  ├─ 헬스체크 시작...")
         logger.info("🏥 헬스체크 실행 중...")
         if not health_check():
+            print("  └─ ❌ 헬스체크 실패")
             logger.error("❌ 초기 헬스체크 실패")
             return 1
         
+        print("  ├─ 헬스체크 통과")
         logger.info("✅ 헬스체크 통과")
         
         # 스케줄러 실행 (무한 루프)
+        print("  ├─ 스케줄러 모드로 전환 중...")
         logger.info("🔄 스케줄러 모드로 전환 중...")
         logger.info("⏰ 1분마다 자동 실행 시작...")
+        print("  └─ run_scheduler() 호출...")
         run_scheduler()
         
+        print("  └─ 시스템 정상 종료")
         logger.info("✅ 시스템이 정상적으로 종료되었습니다.")
         return 0
         
     except KeyboardInterrupt:
+        print("  └─ ⚠️ 사용자 중단")
         logger.info("⚠️ 사용자에 의해 중단되었습니다.")
         return 1
         
     except Exception as e:
+        print(f"  └─ ❌ main() 예외 발생: {e}")
         logger.error(f"❌ 예상치 못한 오류가 발생했습니다: {e}")
         import traceback
+        print("===== 스택 트레이스 =====")
+        print(traceback.format_exc())
+        print("="*50)
         logger.error(traceback.format_exc())
         return 1
         
     finally:
+        print("  └─ main() 함수 종료 처리")
         logger.info("시스템 종료 중...")
 
 if __name__ == '__main__':
