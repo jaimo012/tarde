@@ -13,7 +13,10 @@ from typing import List, Dict
 from loguru import logger
 from datetime import datetime
 
-from config.settings import LOGGING_CONFIG, REQUIRED_FIELDS, SLACK_WEBHOOK_URL, TRADING_CONFIG
+from config.settings import (
+    LOGGING_CONFIG, REQUIRED_FIELDS, SLACK_WEBHOOK_URL, TRADING_CONFIG,
+    SERVICE_ACCOUNT_FILE, GOOGLE_DRIVE_FOLDER_ID
+)
 from src.dart_api.client import DartApiClient
 from src.dart_api.analyzer import ReportAnalyzer
 from src.google_sheets.client import GoogleSheetsClient
@@ -40,7 +43,11 @@ class DartScrapingSystem:
         print("  ├─ 구글 시트 클라이언트 초기화 중...")
         self.sheets_client = GoogleSheetsClient()
         print("  ├─ 슬랙 알림 클라이언트 초기화 중...")
-        self.slack_notifier = SlackNotifier(SLACK_WEBHOOK_URL)
+        self.slack_notifier = SlackNotifier(
+            webhook_url=SLACK_WEBHOOK_URL,
+            service_account_file=SERVICE_ACCOUNT_FILE,
+            drive_folder_id=GOOGLE_DRIVE_FOLDER_ID
+        )
         
         # 통합 오류 처리기 초기화
         print("  ├─ 통합 오류 처리기 초기화 중...")

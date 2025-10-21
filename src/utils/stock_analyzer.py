@@ -24,6 +24,7 @@ try:
     import matplotlib
     matplotlib.use('Agg')  # GUI 없는 환경에서 실행
     import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
     import matplotlib.font_manager as fm
     from matplotlib import dates as mdates
     MATPLOTLIB_AVAILABLE = True
@@ -325,15 +326,23 @@ class StockChartGenerator:
             logger.warning(f"폰트 설정 실패: {e}")
     
     def create_candlestick_chart(self, stock_code: str, stock_name: str, 
-                                  df: object, days_to_show: int = 20) -> Optional[str]:
+                                  df: object, days_to_show: int = 10) -> Optional[str]:
         """
-        캔들스틱 차트를 생성합니다.
+        고품질 캔들스틱 차트를 생성합니다.
+        
+        특징:
+        - 사용자 지정 색상 (양봉: #FF5050, 음봉: #516AFF)
+        - 5일/20일 이동평균선 표시
+        - Y축 자동 스케일 (최대+20%, 최소-20%)
+        - 현재가 ±3% 영역 배경 표시 (노란색)
+        - 종가 기준 최대/최소값 주석 (현재가 대비 %)
+        - 현재가 표시
         
         Args:
             stock_code (str): 종목코드
             stock_name (str): 종목명
             df (pd.DataFrame): OHLCV 데이터 (100일 이상)
-            days_to_show (int): 표시할 일수 (기본 20일)
+            days_to_show (int): 표시할 일수 (기본 10일)
             
         Returns:
             Optional[str]: 저장된 차트 이미지 경로 (실패 시 None)
@@ -341,59 +350,147 @@ class StockChartGenerator:
         if not MATPLOTLIB_AVAILABLE:
             return None
         
+        # 차트 색상 설정
+        COLOR_BULL = '#FF5050'  # 양봉 (빨강)
+        COLOR_BEAR = '#516AFF'  # 음봉 (파랑)
+        COLOR_MA5 = '#333333'   # 5일 이평선 (검정)
+        COLOR_MA20 = '#8C8C8C'  # 20일 이평선 (회색)
+        
         try:
-            # 최근 N일 데이터만 표시
-            df_display = df.tail(days_to_show).copy()
-            
             # 5일, 20일 이동평균 계산 (전체 데이터 사용)
             df['MA5'] = df['종가'].rolling(window=5).mean()
             df['MA20'] = df['종가'].rolling(window=20).mean()
             
+            # 최근 N일 데이터만 표시
+            df_display = df.tail(days_to_show).copy()
+            
+            # Y축 범위 계산 (표시 구간의 최대/최소 + 20%)
+            display_high = df_display['고가'].max()
+            display_low = df_display['저가'].min()
+            y_margin = (display_high - display_low) * 0.2
+            y_max = display_high + y_margin
+            y_min = max(0, display_low - y_margin)  # 음수 방지
+            
+            # 현재가 (최근 종가)
+            current_price = df_display['종가'].iloc[-1]
+            
             # Figure 생성
             fig, ax = plt.subplots(figsize=(14, 7))
+            
+            # 현재가 기준 ±3% 영역 배경 추가
+            current_price_high = current_price * 1.03  # +3%
+            current_price_low = current_price * 0.97   # -3%
+            
+            # 전체 차트 영역에 노란색 배경 추가
+            ax.axhspan(current_price_low, current_price_high, 
+                        alpha=0.2, color='yellow', zorder=0)
             
             # 캔들스틱 그리기
             for idx, (date, row) in enumerate(df_display.iterrows()):
                 # 양봉/음봉 색상 결정
-                color = 'red' if row['종가'] >= row['시가'] else 'blue'
+                is_bull = row['종가'] >= row['시가']
+                color = COLOR_BULL if is_bull else COLOR_BEAR
                 
                 # 캔들 몸통
                 height = abs(row['종가'] - row['시가'])
                 bottom = min(row['시가'], row['종가'])
-                ax.bar(idx, height, width=0.6, bottom=bottom, color=color, alpha=0.8)
+                ax.bar(idx, height, width=0.6, bottom=bottom, color=color, alpha=0.9, edgecolor=color)
                 
                 # 꼬리 (고가-저가)
-                ax.plot([idx, idx], [row['저가'], row['고가']], color=color, linewidth=1)
+                ax.plot([idx, idx], [row['저가'], row['고가']], color=color, linewidth=1.5)
             
             # 이동평균선 추가 (표시 구간에 해당하는 부분만)
             ma5_display = df['MA5'].tail(days_to_show)
             ma20_display = df['MA20'].tail(days_to_show)
             
             x_range = range(len(df_display))
-            ax.plot(x_range, ma5_display.values, label='MA5', color='orange', linewidth=1.5)
-            ax.plot(x_range, ma20_display.values, label='MA20', color='green', linewidth=1.5)
+            ax.plot(x_range, ma5_display.values, 
+                    color=COLOR_MA5, linewidth=2, linestyle='-', zorder=2)
+            ax.plot(x_range, ma20_display.values, 
+                    color=COLOR_MA20, linewidth=2, linestyle='-', zorder=2)
             
             # X축 날짜 레이블
             dates = [date.strftime('%m/%d') for date in df_display.index]
-            ax.set_xticks(range(0, len(dates), max(1, len(dates)//10)))
-            ax.set_xticklabels([dates[i] for i in range(0, len(dates), max(1, len(dates)//10))], rotation=45)
+            ax.set_xticks(range(len(dates)))
+            ax.set_xticklabels(dates, rotation=45)
+            
+            # Y축 범위 설정
+            ax.set_ylim(y_min, y_max)
             
             # 차트 꾸미기
-            ax.set_title(f'{stock_name}({stock_code}) - 최근 {days_to_show}일', fontsize=16, fontweight='bold')
+            ax.set_title(f'{stock_name}({stock_code}) - 최근 {days_to_show}일', 
+                         fontsize=16, fontweight='bold', pad=20)
             ax.set_xlabel('날짜', fontsize=12)
             ax.set_ylabel('가격 (원)', fontsize=12)
-            ax.legend(loc='best')
-            ax.grid(True, alpha=0.3)
+            
+            # 범례 (색상 정보 포함)
+            legend_elements = [
+                mpatches.Patch(facecolor=COLOR_BULL, label='양봉'),
+                mpatches.Patch(facecolor=COLOR_BEAR, label='음봉'),
+                plt.Line2D([0], [0], color=COLOR_MA5, linewidth=2, label='5일 이평선'),
+                plt.Line2D([0], [0], color=COLOR_MA20, linewidth=2, label='20일 이평선'),
+                mpatches.Patch(facecolor='yellow', alpha=0.2, 
+                               label=f'현재가 ±3% ({current_price_low:,.0f}~{current_price_high:,.0f}원)')
+            ]
+            ax.legend(handles=legend_elements, loc='best', fontsize=9)
+            
+            ax.grid(True, alpha=0.3, linestyle='--')
             
             # Y축 가격 포맷팅 (천 단위 구분)
             ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{int(x):,}'))
+            
+            # 종가 기준 최대/최소값 및 현재가 주석 추가
+            # 종가 최대값이 발생한 위치 찾기
+            close_high = df_display['종가'].max()
+            close_high_idx = df_display['종가'].idxmax()
+            close_high_pos = df_display.index.get_loc(close_high_idx)
+            
+            # 종가 최소값이 발생한 위치 찾기
+            close_low = df_display['종가'].min()
+            close_low_idx = df_display['종가'].idxmin()
+            close_low_pos = df_display.index.get_loc(close_low_idx)
+            
+            # 현재가 위치 (마지막 종가)
+            current_pos = len(df_display) - 1
+            
+            # 종가 최대값 표시 (현재가 대비 %)
+            close_high_pct = ((close_high - current_price) / current_price) * 100
+            close_high_text = f'{close_high:,.0f}원 (+{close_high_pct:.1f}%)'
+            ax.annotate(close_high_text, 
+                        xy=(close_high_pos, close_high),
+                        xytext=(10, 10), textcoords='offset points',
+                        fontsize=10, fontweight='bold',
+                        color='red',
+                        bbox=dict(boxstyle='round,pad=0.5', facecolor='white', edgecolor='red', alpha=0.8),
+                        arrowprops=dict(arrowstyle='->', color='red', lw=1.5))
+            
+            # 종가 최소값 표시 (현재가 대비 %)
+            close_low_pct = ((close_low - current_price) / current_price) * 100
+            close_low_text = f'{close_low:,.0f}원 ({close_low_pct:.1f}%)'
+            ax.annotate(close_low_text,
+                        xy=(close_low_pos, close_low),
+                        xytext=(10, -20), textcoords='offset points',
+                        fontsize=10, fontweight='bold',
+                        color='blue',
+                        bbox=dict(boxstyle='round,pad=0.5', facecolor='white', edgecolor='blue', alpha=0.8),
+                        arrowprops=dict(arrowstyle='->', color='blue', lw=1.5))
+            
+            # 현재가 표시 (마지막 종가)
+            current_text = f'현재가: {current_price:,.0f}원'
+            ax.annotate(current_text,
+                        xy=(current_pos, current_price),
+                        xytext=(10, 10), textcoords='offset points',
+                        fontsize=11, fontweight='bold',
+                        color='green',
+                        bbox=dict(boxstyle='round,pad=0.5', facecolor='lightgreen', edgecolor='green', alpha=0.8),
+                        arrowprops=dict(arrowstyle='->', color='green', lw=2))
             
             plt.tight_layout()
             
             # 임시 파일로 저장
             temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png', prefix=f'chart_{stock_code}_')
             chart_path = temp_file.name
-            plt.savefig(chart_path, dpi=100, bbox_inches='tight')
+            plt.savefig(chart_path, dpi=120, bbox_inches='tight', facecolor='white')
             plt.close(fig)
             
             logger.info(f"차트 생성 완료: {chart_path}")
@@ -512,10 +609,10 @@ class StockAnalyzer:
             
             logger.info(f"  ✅ 시장 지수 조회 성공: {len(index_df)}일치")
             
-            # 5. 차트 생성 (최근 20일 표시, 100일 데이터 사용)
+            # 5. 차트 생성 (최근 10일 표시, 100일 데이터 사용)
             logger.info(f"  → 5단계: 주식 차트 생성 중...")
             chart_path = self.chart_generator.create_candlestick_chart(
-                stock_code, stock_name, stock_df, days_to_show=20
+                stock_code, stock_name, stock_df, days_to_show=10
             )
             
             if chart_path:

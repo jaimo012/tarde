@@ -42,6 +42,9 @@ if not IS_CLOUDTYPE:
 
     # 슬랙 웹훅 설정 (선택사항)
     SLACK_WEBHOOK_URL = os.getenv('SLACK_WEBHOOK')
+    
+    # Google Drive 설정 (차트 이미지 업로드용, 선택사항)
+    GOOGLE_DRIVE_FOLDER_ID = os.getenv('GOOGLE_DRIVE_FOLDER_ID')  # 차트 저장 폴더 ID
 
     # 시트 이름 설정
     SHEET_NAMES = {

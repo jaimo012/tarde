@@ -2,34 +2,63 @@
 슬랙 알림 모듈
 
 이 모듈은 신규 계약 정보를 슬랙으로 전송하는 기능을 제공합니다.
+차트 이미지는 Google Drive에 업로드되어 공개 URL로 Slack에 전송됩니다.
 """
 
 import requests
 import json
+import os
 from typing import Dict, List, Optional
 from loguru import logger
 from datetime import datetime
 from .stock_analyzer import StockAnalyzer, StockAnalysisResult
 
+try:
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+    from google.oauth2.service_account import Credentials
+    GOOGLE_DRIVE_AVAILABLE = True
+except ImportError:
+    GOOGLE_DRIVE_AVAILABLE = False
+    logger.warning("Google Drive API 라이브러리가 설치되지 않았습니다. 차트 이미지 업로드가 비활성화됩니다.")
+
 
 class SlackNotifier:
     """슬랙 웹훅을 통한 알림 전송 클래스"""
     
-    def __init__(self, webhook_url: Optional[str] = None):
+    def __init__(self, webhook_url: Optional[str] = None, 
+                 service_account_file: Optional[str] = None,
+                 drive_folder_id: Optional[str] = None):
         """
         슬랙 알림 클래스를 초기화합니다.
         
         Args:
             webhook_url (Optional[str]): 슬랙 웹훅 URL
+            service_account_file (Optional[str]): Google Drive Service Account JSON 파일 경로
+            drive_folder_id (Optional[str]): Google Drive 폴더 ID (차트 이미지 저장용)
         """
         self.webhook_url = webhook_url
         self.is_enabled = bool(webhook_url)
+        
+        # Google Drive 설정
+        self.service_account_file = service_account_file
+        self.drive_folder_id = drive_folder_id
+        self.drive_enabled = (
+            GOOGLE_DRIVE_AVAILABLE and 
+            service_account_file and 
+            os.path.exists(service_account_file) and
+            drive_folder_id
+        )
         
         # 주식 분석기 초기화 (pykrx 기반, API 키 불필요)
         self.stock_analyzer = StockAnalyzer()
         
         if self.is_enabled:
             logger.info("슬랙 알림이 활성화되었습니다.")
+            if self.drive_enabled:
+                logger.info("Google Drive 차트 업로드가 활성화되었습니다.")
+            else:
+                logger.warning("Google Drive 설정이 누락되어 차트 이미지 업로드가 비활성화됩니다.")
         else:
             logger.warning("슬랙 웹훅 URL이 설정되지 않아 알림이 비활성화됩니다.")
     
@@ -284,24 +313,75 @@ class SlackNotifier:
     
     def _upload_chart_image(self, image_path: str, stock_name: str) -> Optional[str]:
         """
-        차트 이미지를 슬랙에 업로드합니다.
+        차트 이미지를 Google Drive에 업로드하고 공개 URL을 반환합니다.
         
         Args:
             image_path (str): 이미지 파일 경로
             stock_name (str): 종목명
             
         Returns:
-            Optional[str]: 업로드된 이미지 URL (실패 시 None)
+            Optional[str]: 이미지 직접 접근 URL (실패 시 None)
         """
-        # 슬랙 웹훅은 직접 이미지 업로드를 지원하지 않음
-        # 대신 임시로 차트 이미지를 텍스트로 표시하거나,
-        # 별도의 파일 호스팅 서비스를 사용해야 함
-        # 여기서는 로컬 파일 경로를 로그로만 남김
-        logger.info(f"차트 이미지 생성됨: {image_path} ({stock_name})")
+        if not self.drive_enabled:
+            logger.warning(f"Google Drive가 비활성화되어 차트 이미지를 업로드할 수 없습니다: {stock_name}")
+            return None
         
-        # TODO: 실제 구현 시 이미지 호스팅 서비스 (예: imgur, AWS S3) 사용
-        # 현재는 None 반환 (차트는 로컬에 저장됨)
-        return None
+        if not os.path.exists(image_path):
+            logger.error(f"차트 이미지 파일을 찾을 수 없습니다: {image_path}")
+            return None
+        
+        try:
+            logger.info(f"Google Drive에 차트 이미지 업로드 중: {stock_name}")
+            
+            # Service Account로 인증
+            creds = Credentials.from_service_account_file(
+                self.service_account_file,
+                scopes=['https://www.googleapis.com/auth/drive.file']
+            )
+            
+            service = build('drive', 'v3', credentials=creds)
+            
+            # 파일 메타데이터
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            file_metadata = {
+                'name': f'{stock_name}_{timestamp}.png',
+                'parents': [self.drive_folder_id]
+            }
+            
+            # 파일 업로드
+            media = MediaFileUpload(image_path, mimetype='image/png', resumable=True)
+            file = service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id, name'
+            ).execute()
+            
+            file_id = file.get('id')
+            logger.info(f"  ✅ 파일 업로드 완료: {file.get('name')} (ID: {file_id})")
+            
+            # 공개 권한 설정 (누구나 볼 수 있게)
+            permission = {
+                'type': 'anyone',
+                'role': 'reader'
+            }
+            service.permissions().create(
+                fileId=file_id,
+                body=permission
+            ).execute()
+            
+            logger.info(f"  ✅ 공개 권한 설정 완료")
+            
+            # 이미지 직접 접근 URL 생성
+            direct_url = f"https://drive.google.com/uc?export=view&id={file_id}"
+            logger.info(f"  ✅ 이미지 URL: {direct_url}")
+            
+            return direct_url
+            
+        except Exception as e:
+            logger.error(f"Google Drive 업로드 실패 ({stock_name}): {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return None
     
     def _send_to_slack(self, message: Dict) -> bool:
         """
