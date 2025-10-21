@@ -434,6 +434,14 @@ grep "삼성전자" logs/dart_scraper.log
 
 ## 📋 개발 이력
 
+### v4.2.8 (2025-10-21) - pykrx 시장지수 조회 버그 수정 🐛
+- 🐛 **치명적 버그 수정**: pykrx API에서 시장지수 조회 시 잘못된 ticker 사용으로 인한 KeyError 해결
+- 🔢 **올바른 ticker 코드 사용**: "KOSPI"/"KOSDAQ" 대신 숫자 코드 "1001"/"2001" 사용
+- ✅ **슬랙 알림 정상화**: 주식 분석 실패로 인한 "시장지수 조회 실패" 오류 완전 해결
+- 📊 **전체 분석 프로세스 복구**: 시가총액, 현재가, 시장지수, 차트 생성 등 모든 단계 정상 작동
+- 🎯 **원인 분석**: pykrx IndexTicker는 한글/영문 이름이 아닌 고유 숫자 코드만 지원
+- 🧪 **테스트 강화**: test 폴더에 전체 분석 테스트 스크립트 추가로 재발 방지
+
 ### v4.2.7 (2025-10-20) - DataFrame index 버그 수정 🐛
 - 🐛 **진행률 버그 수정**: pandas DataFrame의 non-sequential index로 인한 진행률 오류 해결
 - 🔢 **enumerate 사용**: iterrows()에 enumerate를 추가하여 순차적 카운터 사용

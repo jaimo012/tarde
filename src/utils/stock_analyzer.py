@@ -195,15 +195,16 @@ class PykrxStockDataClient:
             Optional[pd.DataFrame]: 지수 데이터프레임 (실패 시 None)
         """
         try:
-            # KOSPI: "KOSPI", KOSDAQ: "KOSDAQ"
-            index_name = "KOSPI" if market_type == "KOSPI" else "KOSDAQ"
+            # pykrx API에서 사용하는 정확한 ticker 코드 (숫자)
+            # KOSPI: "1001", KOSDAQ: "2001"
+            index_ticker = "1001" if market_type == "KOSPI" else "2001"
             
-            logger.debug(f"시장지수 조회 시도: {index_name}, 기간: {start_date} ~ {end_date}")
+            logger.debug(f"시장지수 조회 시도: {market_type} (ticker={index_ticker}), 기간: {start_date} ~ {end_date}")
             
             df = stock.get_index_ohlcv_by_date(
                 fromdate=start_date,
                 todate=end_date,
-                ticker=index_name
+                ticker=index_ticker
             )
             
             # 데이터가 없고 재시도 옵션이 켜져 있으면 전일로 재시도
@@ -221,7 +222,7 @@ class PykrxStockDataClient:
                     df = stock.get_index_ohlcv_by_date(
                         fromdate=start_date,
                         todate=prev_date,
-                        ticker=index_name
+                        ticker=index_ticker
                     )
                     
                     if not df.empty:
@@ -229,10 +230,10 @@ class PykrxStockDataClient:
                         break
             
             if df.empty:
-                logger.warning(f"시장지수 조회 결과 없음 ({index_name}, {start_date}~{end_date})")
+                logger.warning(f"시장지수 조회 결과 없음 ({market_type}, ticker={index_ticker}, {start_date}~{end_date})")
                 return None
             
-            logger.debug(f"지수 데이터 조회 성공: {len(df)}일치 ({index_name})")
+            logger.debug(f"지수 데이터 조회 성공: {len(df)}일치 ({market_type}, ticker={index_ticker})")
             return df
             
         except Exception as e:
