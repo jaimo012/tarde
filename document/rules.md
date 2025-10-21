@@ -24,13 +24,63 @@
 ### 2.2 공식 링크 & 로컬 가이드(정기 점검 목록)
 - **주식거래 API (Kiwoom)**  
   - 온라인: https://openapi.kiwoom.com/guide/apiguide?dummyVal=0  
-  - 로컬: `document/키움 REST API 문서.pdf`, `document/키움 REST API 문서.xlsx`
+  - 로컬: `document/키움 REST API 문서` 폴더 내 문서들, `document/키움 REST API 문서.pdf`, `document/키움 REST API 문서.xlsx`
 - **전자공시시스템(DART)**  
   - 공시검색: https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019001  
   - 원본파일: https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019003
 - **Gemini API**  
   - 개요/레퍼런스: https://ai.google.dev/gemini-api/docs  
   - 모델 가이드(2.5 Flash): https://ai.google.dev/gemini-api/docs/models?hl=ko#gemini-2.5-flash
+
+### 2.3 필수 참조 문서 우선순위 (Documentation Priority)
+> 작업 착수 전 반드시 해당 영역의 문서를 **순서대로** 확인한다.
+
+#### 공통(모든 작업)
+1. **`document/rules.md`** (본 문서): 코딩 원칙, 보안, 테스트, 배포 규칙
+2. **`README.md`**: 프로젝트 전체 구조, 개발 이력, 트러블슈팅
+
+#### 투자 로직 관련 작업
+> 투자 점수 계산, 매수/매도 조건, 거래 전략 수정 시
+1. **`INVESTMENT_LOGIC.md`**: 투자 로직 상세 설명 (시장지수, 시가총액, 계약비율, 거래량, 캔들패턴)
+2. **`RISK_DISCLOSURE.md`**: 리스크 관리 정책, 손절/익절 규칙
+3. **`src/utils/stock_analyzer.py`**: 실제 점수 계산 로직 구현체
+
+#### 키움증권 API 작업
+> 주문, 잔고조회, 체결내역 등 거래 API 관련 작업 시
+1. **`KIWOOM_API_REFERENCE.md`**: TR 코드 매핑, 함수별 API 상세 정보, 변경 시 대응 가이드
+2. **`document/키움 REST API 문서.pdf`** 또는 **온라인 가이드**: 공식 API 스펙
+3. **`src/trading/kiwoom_client.py`**: 키움 API 클라이언트 구현체
+
+#### 배포 및 환경 설정 작업
+> 클라우드타입 배포, 환경변수 설정, 시크릿 관리 시
+1. **`CLOUDTYPE_ENV_SETUP.md`**: 클라우드타입 환경변수 설정 가이드
+2. **`env-template.txt`**: 환경변수 템플릿
+3. **`config/settings.py`**: 설정 로딩 로직
+
+#### DART 공시 분석 작업
+> 공시 수집, 파싱, 계약 정보 추출 시
+1. **§2.2 DART 공식 문서**: API 엔드포인트, 파라미터, 응답 스키마
+2. **`src/dart/scraper.py`**: 공시 수집 로직
+3. **`src/dart/report_parser.py`**: 보고서 파싱 로직
+
+#### 주가 데이터 분석 작업
+> pykrx 활용, 시세 분석, 차트 생성 시
+1. **pykrx 공식 문서**: (외부) https://github.com/sharebook-kr/pykrx
+2. **`src/utils/stock_analyzer.py`**: 주가 데이터 분석 및 차트 생성
+3. **`src/utils/market_schedule.py`**: 한국 시장 휴장일 관리
+
+#### 슬랙 알림 작업
+> 알림 메시지 포맷, 웹훅 전송 시
+1. **`src/slack/notifier.py`**: 슬랙 알림 로직
+2. **`src/slack/message_builder.py`**: 메시지 템플릿 빌더
+
+#### 구글 시트 연동 작업
+> 종목 목록 조회, 계약 데이터 저장, 거래 이력 기록 시
+1. **Google Sheets API 공식 문서**: (외부) https://developers.google.com/sheets/api
+2. **`src/google_sheets/client.py`**: 구글 시트 클라이언트 구현체
+3. **`config/settings.py`**: 시트 이름, 컬럼 정의
+
+**원칙**: 문서 없이 작업 금지. 문서가 불명확하거나 없으면 **먼저 문서화**한 후 구현.
 
 ---
 
