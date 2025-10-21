@@ -591,7 +591,7 @@ class StockAnalyzer:
         
         # 거래 조건 만족 개수
         trading_conditions_met = 0
-        if volume_ratio >= 2.0:  # 20일 평균의 2배 이상
+        if volume_ratio < 1.1:  # 20일 평균의 1.1배 미만 (다른 플레이어 반응 전)
             trading_conditions_met += 1
         if is_positive_candle:  # 양봉
             trading_conditions_met += 1
