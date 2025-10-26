@@ -40,15 +40,27 @@ class SlackNotifier:
         self.webhook_url = webhook_url
         self.is_enabled = bool(webhook_url)
         
+        # 환경 확인
+        is_cloudtype = os.getenv('ENVIRONMENT') == 'production'
+        
         # Google Drive 설정
         self.service_account_file = service_account_file
         self.drive_folder_id = drive_folder_id
-        self.drive_enabled = (
-            GOOGLE_DRIVE_AVAILABLE and 
-            service_account_file and 
-            os.path.exists(service_account_file) and
-            drive_folder_id
-        )
+        
+        # 클라우드타입 환경에서는 환경변수에서 서비스 계정 정보를 가져오므로
+        # 파일 경로 체크를 건너뛰고, drive_folder_id만 체크합니다
+        if is_cloudtype:
+            self.drive_enabled = (
+                GOOGLE_DRIVE_AVAILABLE and 
+                drive_folder_id is not None
+            )
+        else:
+            self.drive_enabled = (
+                GOOGLE_DRIVE_AVAILABLE and 
+                service_account_file and 
+                os.path.exists(service_account_file) and
+                drive_folder_id
+            )
         
         # 주식 분석기 초기화 (pykrx 기반, API 키 불필요)
         self.stock_analyzer = StockAnalyzer()
@@ -333,11 +345,24 @@ class SlackNotifier:
         try:
             logger.info(f"Google Drive에 차트 이미지 업로드 중: {stock_name}")
             
-            # Service Account로 인증
-            creds = Credentials.from_service_account_file(
-                self.service_account_file,
-                scopes=['https://www.googleapis.com/auth/drive.file']
-            )
+            # Service Account로 인증 (환경에 따라 분기)
+            is_cloudtype = os.getenv('ENVIRONMENT') == 'production'
+            
+            if is_cloudtype:
+                # 클라우드타입 환경: 환경변수에서 서비스 계정 정보 가져오기
+                from config.cloudtype_settings import GOOGLE_SERVICE_ACCOUNT_INFO
+                creds = Credentials.from_service_account_info(
+                    GOOGLE_SERVICE_ACCOUNT_INFO,
+                    scopes=['https://www.googleapis.com/auth/drive.file']
+                )
+                logger.info("클라우드타입 환경에서 서비스 계정 정보를 사용합니다.")
+            else:
+                # 로컬 환경: JSON 파일 사용
+                creds = Credentials.from_service_account_file(
+                    self.service_account_file,
+                    scopes=['https://www.googleapis.com/auth/drive.file']
+                )
+                logger.info(f"로컬 환경에서 서비스 계정 파일을 사용합니다: {self.service_account_file}")
             
             service = build('drive', 'v3', credentials=creds)
             
@@ -345,7 +370,7 @@ class SlackNotifier:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             file_metadata = {
                 'name': f'{stock_name}_{timestamp}.png',
-                'parents': [self.drive_folder_id]
+                'parents': [self.drive_folder_id] if self.drive_folder_id else []
             }
             
             # 파일 업로드

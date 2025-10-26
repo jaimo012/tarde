@@ -53,6 +53,12 @@ GOOGLE_SERVICE_ACCOUNT_INFO = get_google_service_account_info()
 # 슬랙 웹훅 설정 (선택사항)
 SLACK_WEBHOOK_URL = os.getenv('SLACK_WEBHOOK')
 
+# 구글 서비스 계정 파일 경로 (클라우드타입에서는 환경변수에서 JSON을 디코딩하므로 None)
+SERVICE_ACCOUNT_FILE = None
+
+# Google Drive 설정 (차트 이미지 업로드용, 선택사항)
+GOOGLE_DRIVE_FOLDER_ID = os.getenv('GOOGLE_DRIVE_FOLDER_ID')  # 차트 저장 폴더 ID
+
 # 시트 이름 설정
 SHEET_NAMES = {
     'CONTRACT': "계약",

@@ -20,6 +20,13 @@ if IS_CLOUDTYPE:
     try:
         from config.cloudtype_settings import *
         print("✅ 클라우드타입 설정을 사용합니다.")
+        
+        # cloudtype_settings에 없는 변수들을 명시적으로 설정
+        if 'SERVICE_ACCOUNT_FILE' not in globals() or SERVICE_ACCOUNT_FILE is None:
+            SERVICE_ACCOUNT_FILE = None
+        if 'GOOGLE_DRIVE_FOLDER_ID' not in globals():
+            GOOGLE_DRIVE_FOLDER_ID = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
+            
     except ImportError as e:
         print(f"⚠️ 클라우드타입 설정을 불러올 수 없어 기본 설정을 사용합니다: {e}")
         IS_CLOUDTYPE = False
