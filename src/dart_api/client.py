@@ -15,6 +15,7 @@ from typing import List, Dict, Optional
 from loguru import logger
 
 from config.settings import DART_API_KEY, DART_API_CONFIG, REPORT_SEARCH_CONFIG
+from utils.error_handler import get_error_handler
 
 
 class DartApiClient:
@@ -146,6 +147,22 @@ class DartApiClient:
         Returns:
             Optional[bytes]: 다운로드된 파일 내용 (실패 시 None)
         """
+        error_handler = get_error_handler()
+        
+        # 입력값 검증 (1단계)
+        if not rcept_no or not isinstance(rcept_no, str):
+            error_msg = f"잘못된 접수번호: {rcept_no}"
+            logger.error(error_msg)
+            if error_handler:
+                error_handler.handle_error(
+                    error=ValueError(error_msg),
+                    module="dart_api.client",
+                    operation="download_report_document",
+                    severity="ERROR",
+                    additional_context={"rcept_no": rcept_no}
+                )
+            return None
+        
         api_url = f"{self.base_url}{DART_API_CONFIG['document_endpoint']}"
         params = {
             'crtfc_key': self.api_key,
@@ -155,18 +172,89 @@ class DartApiClient:
         try:
             logger.debug(f"보고서({rcept_no}) 다운로드를 시작합니다.")
             
+            # 2단계: 핵심 로직 실행
             response = requests.get(api_url, params=params, timeout=60)
             response.raise_for_status()
             
-            if response.status_code == 200:
-                logger.debug(f"보고서({rcept_no}) 다운로드 완료")
+            # 3단계: 결과 검증
+            if response.status_code == 200 and response.content:
+                content_length = len(response.content)
+                logger.debug(f"보고서({rcept_no}) 다운로드 완료: {content_length:,} bytes")
+                
+                # 다운로드된 파일이 너무 작으면 오류로 판단
+                if content_length < 100:
+                    raise ValueError(f"다운로드된 파일 크기가 너무 작음: {content_length} bytes")
+                    
                 return response.content
             else:
-                logger.warning(f"보고서({rcept_no}) 다운로드 실패 (상태 코드: {response.status_code})")
+                error_msg = f"보고서 다운로드 실패 (상태 코드: {response.status_code})"
+                logger.warning(error_msg)
+                if error_handler:
+                    error_handler.handle_error(
+                        error=RuntimeError(error_msg),
+                        module="dart_api.client",
+                        operation="download_report_document",
+                        severity="WARNING",
+                        related_stock=f"접수번호:{rcept_no}",
+                        additional_context={
+                            "status_code": response.status_code,
+                            "content_length": len(response.content) if response.content else 0
+                        }
+                    )
                 return None
                 
+        except requests.exceptions.Timeout as e:
+            if error_handler:
+                error_handler.handle_error(
+                    error=e,
+                    module="dart_api.client", 
+                    operation="download_report_document",
+                    severity="WARNING",
+                    related_stock=f"접수번호:{rcept_no}",
+                    additional_context={"timeout": 60, "api_url": api_url},
+                    auto_recovery_attempted=True
+                )
+            logger.warning(f"보고서({rcept_no}) 다운로드 타임아웃 (60초)")
+            return None
+            
+        except requests.exceptions.ConnectionError as e:
+            if error_handler:
+                error_handler.handle_error(
+                    error=e,
+                    module="dart_api.client",
+                    operation="download_report_document", 
+                    severity="ERROR",
+                    related_stock=f"접수번호:{rcept_no}",
+                    additional_context={"api_url": api_url},
+                    auto_recovery_attempted=False
+                )
+            logger.error(f"보고서({rcept_no}) 다운로드 연결 오류: {e}")
+            return None
+            
         except requests.exceptions.RequestException as e:
-            logger.error(f"보고서({rcept_no}) 다운로드 중 오류 발생: {e}")
+            if error_handler:
+                error_handler.handle_error(
+                    error=e,
+                    module="dart_api.client",
+                    operation="download_report_document",
+                    severity="ERROR", 
+                    related_stock=f"접수번호:{rcept_no}",
+                    additional_context={"api_url": api_url, "params": {"rcept_no": rcept_no}}
+                )
+            logger.error(f"보고서({rcept_no}) 다운로드 중 요청 오류: {e}")
+            return None
+            
+        except Exception as e:
+            if error_handler:
+                error_handler.handle_error(
+                    error=e,
+                    module="dart_api.client",
+                    operation="download_report_document",
+                    severity="CRITICAL",
+                    related_stock=f"접수번호:{rcept_no}",
+                    additional_context={"api_url": api_url, "params": {"rcept_no": rcept_no}}
+                )
+            logger.error(f"보고서({rcept_no}) 다운로드 중 예상치 못한 오류: {e}")
             return None
     
     def extract_document_from_zip(self, zip_content: bytes, rcept_no: str) -> Optional[str]:
@@ -180,44 +268,190 @@ class DartApiClient:
         Returns:
             Optional[str]: 추출된 HTML/XML 내용 (실패 시 None)
         """
-        temp_dir = tempfile.mkdtemp()
+        error_handler = get_error_handler()
+        temp_dir = None
+        
+        # 1단계: 입력값 검증
+        if not zip_content or not isinstance(zip_content, bytes):
+            error_msg = f"잘못된 ZIP 내용: {type(zip_content)}, 크기: {len(zip_content) if zip_content else 0}"
+            logger.error(error_msg)
+            if error_handler:
+                error_handler.handle_error(
+                    error=ValueError(error_msg),
+                    module="dart_api.client",
+                    operation="extract_document_from_zip",
+                    severity="ERROR",
+                    related_stock=f"접수번호:{rcept_no}",
+                    additional_context={"zip_size": len(zip_content) if zip_content else 0}
+                )
+            return None
+        
+        if not rcept_no:
+            error_msg = "접수번호가 없습니다"
+            logger.error(error_msg)
+            if error_handler:
+                error_handler.handle_error(
+                    error=ValueError(error_msg),
+                    module="dart_api.client", 
+                    operation="extract_document_from_zip",
+                    severity="ERROR"
+                )
+            return None
         
         try:
+            # 2단계: 핵심 로직 실행
+            temp_dir = tempfile.mkdtemp()
+            logger.debug(f"보고서({rcept_no}) ZIP 압축 해제 시작: {len(zip_content):,} bytes")
+            
             # ZIP 파일을 임시 디렉토리에 저장
             zip_file_path = os.path.join(temp_dir, f"{rcept_no}.zip")
             with open(zip_file_path, 'wb') as f:
                 f.write(zip_content)
             
-            # ZIP 파일 압축 해제
-            with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
-                zip_ref.extractall(temp_dir)
+            # ZIP 파일 검증 및 압축 해제
+            try:
+                with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+                    # ZIP 파일 무결성 검사
+                    bad_file = zip_ref.testzip()
+                    if bad_file:
+                        raise zipfile.BadZipFile(f"손상된 파일 발견: {bad_file}")
+                    
+                    zip_ref.extractall(temp_dir)
+                    logger.debug(f"보고서({rcept_no}) ZIP 압축 해제 완료")
+                    
+            except zipfile.BadZipFile as e:
+                if error_handler:
+                    error_handler.handle_error(
+                        error=e,
+                        module="dart_api.client",
+                        operation="extract_document_from_zip",
+                        severity="ERROR",
+                        related_stock=f"접수번호:{rcept_no}",
+                        additional_context={"zip_size": len(zip_content)}
+                    )
+                logger.error(f"보고서({rcept_no}) ZIP 파일이 손상됨: {e}")
+                return None
             
             # 보고서 본문 파일 찾기 (HTML 또는 XML 파일)
             report_file_path = None
-            for file_name in os.listdir(temp_dir):
-                if file_name.endswith(('.xml', '.html', '.htm')):
-                    report_file_path = os.path.join(temp_dir, file_name)
-                    break
+            available_files = []
             
+            for file_name in os.listdir(temp_dir):
+                if file_name != f"{rcept_no}.zip":  # ZIP 파일은 제외
+                    available_files.append(file_name)
+                    if file_name.endswith(('.xml', '.html', '.htm')):
+                        report_file_path = os.path.join(temp_dir, file_name)
+                        logger.debug(f"보고서 본문 파일 발견: {file_name}")
+                        break
+            
+            # 3단계: 결과 검증
             if not report_file_path:
-                logger.warning(f"보고서({rcept_no}) ZIP 파일 내에서 본문 파일을 찾을 수 없습니다.")
+                error_msg = f"보고서 본문 파일을 찾을 수 없음. 사용 가능한 파일: {available_files}"
+                logger.warning(error_msg)
+                if error_handler:
+                    error_handler.handle_error(
+                        error=FileNotFoundError(error_msg),
+                        module="dart_api.client",
+                        operation="extract_document_from_zip",
+                        severity="WARNING",
+                        related_stock=f"접수번호:{rcept_no}",
+                        additional_context={"available_files": available_files}
+                    )
                 return None
             
             # 파일 내용 읽기
-            with open(report_file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                content = f.read()
+            try:
+                with open(report_file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                
+                # 내용 검증
+                if not content or len(content.strip()) < 100:
+                    raise ValueError(f"추출된 내용이 너무 짧음: {len(content)} 문자")
+                    
+                logger.debug(f"보고서({rcept_no}) 본문 추출 완료: {len(content):,} 문자")
+                return content
+                
+            except UnicodeDecodeError:
+                # UTF-8 실패 시 다른 인코딩 시도
+                logger.warning(f"UTF-8 디코딩 실패, 다른 인코딩 시도: {rcept_no}")
+                for encoding in ['cp949', 'euc-kr', 'iso-8859-1']:
+                    try:
+                        with open(report_file_path, 'r', encoding=encoding, errors='ignore') as f:
+                            content = f.read()
+                        if content and len(content.strip()) >= 100:
+                            logger.info(f"보고서({rcept_no}) {encoding} 인코딩으로 성공")
+                            return content
+                    except Exception:
+                        continue
+                
+                # 모든 인코딩 실패
+                error_msg = f"모든 인코딩 시도 실패"
+                if error_handler:
+                    error_handler.handle_error(
+                        error=UnicodeDecodeError('all-encodings', b'', 0, 1, error_msg),
+                        module="dart_api.client",
+                        operation="extract_document_from_zip",
+                        severity="ERROR",
+                        related_stock=f"접수번호:{rcept_no}",
+                        additional_context={"attempted_encodings": ['utf-8', 'cp949', 'euc-kr', 'iso-8859-1']}
+                    )
+                return None
+                
+        except PermissionError as e:
+            if error_handler:
+                error_handler.handle_error(
+                    error=e,
+                    module="dart_api.client",
+                    operation="extract_document_from_zip",
+                    severity="ERROR",
+                    related_stock=f"접수번호:{rcept_no}",
+                    additional_context={"temp_dir": temp_dir}
+                )
+            logger.error(f"보고서({rcept_no}) 파일 권한 오류: {e}")
+            return None
             
-            logger.debug(f"보고서({rcept_no}) 본문 추출 완료")
-            return content
+        except OSError as e:
+            if error_handler:
+                error_handler.handle_error(
+                    error=e,
+                    module="dart_api.client",
+                    operation="extract_document_from_zip",
+                    severity="ERROR",
+                    related_stock=f"접수번호:{rcept_no}",
+                    additional_context={"temp_dir": temp_dir}
+                )
+            logger.error(f"보고서({rcept_no}) 파일 시스템 오류: {e}")
+            return None
             
         except Exception as e:
-            logger.error(f"보고서({rcept_no}) ZIP 파일 처리 중 오류 발생: {e}")
+            if error_handler:
+                error_handler.handle_error(
+                    error=e,
+                    module="dart_api.client",
+                    operation="extract_document_from_zip",
+                    severity="CRITICAL",
+                    related_stock=f"접수번호:{rcept_no}",
+                    additional_context={"temp_dir": temp_dir, "zip_size": len(zip_content)}
+                )
+            logger.error(f"보고서({rcept_no}) ZIP 파일 처리 중 예상치 못한 오류: {e}")
             return None
             
         finally:
             # 임시 디렉토리 정리
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
+            if temp_dir and os.path.exists(temp_dir):
+                try:
+                    shutil.rmtree(temp_dir)
+                    logger.debug(f"임시 디렉토리 정리 완료: {temp_dir}")
+                except Exception as cleanup_error:
+                    logger.warning(f"임시 디렉토리 정리 실패: {cleanup_error}")
+                    if error_handler:
+                        error_handler.handle_error(
+                            error=cleanup_error,
+                            module="dart_api.client",
+                            operation="extract_document_from_zip_cleanup",
+                            severity="WARNING",
+                            additional_context={"temp_dir": temp_dir}
+                        )
     
     def get_report_content(self, rcept_no: str) -> Optional[str]:
         """

@@ -18,6 +18,7 @@ from config.settings import (
     SHEET_COLUMNS,
     ENVIRONMENT
 )
+from utils.error_handler import get_error_handler
 
 
 class GoogleSheetsClient:
@@ -52,35 +53,193 @@ class GoogleSheetsClient:
         Returns:
             bool: 연결 성공 여부
         """
+        error_handler = get_error_handler()
+        
+        # 1단계: 입력값 검증
+        if not self.spreadsheet_url:
+            error_msg = "스프레드시트 URL이 설정되지 않았습니다"
+            logger.error(error_msg)
+            if error_handler:
+                error_handler.handle_error(
+                    error=ValueError(error_msg),
+                    module="google_sheets.client",
+                    operation="connect",
+                    severity="CRITICAL",
+                    additional_context={"environment": ENVIRONMENT}
+                )
+            return False
+        
         try:
+            logger.info(f"구글 스프레드시트 연결 시작 (환경: {ENVIRONMENT})")
+            
+            # 2단계: 핵심 로직 실행 - 인증 정보 준비
             if self.is_cloudtype:
                 # 클라우드타입 환경: 환경변수에서 서비스 계정 정보 가져오기
-                from config.cloudtype_settings import GOOGLE_SERVICE_ACCOUNT_INFO
-                credentials = Credentials.from_service_account_info(
-                    GOOGLE_SERVICE_ACCOUNT_INFO,
-                    scopes=self.scope
-                )
-                logger.info("클라우드타입 환경에서 서비스 계정 정보를 사용합니다.")
+                try:
+                    from config.cloudtype_settings import GOOGLE_SERVICE_ACCOUNT_INFO
+                    if not GOOGLE_SERVICE_ACCOUNT_INFO:
+                        raise ValueError("환경변수에서 구글 서비스 계정 정보를 찾을 수 없습니다")
+                    
+                    credentials = Credentials.from_service_account_info(
+                        GOOGLE_SERVICE_ACCOUNT_INFO,
+                        scopes=self.scope
+                    )
+                    logger.info("클라우드타입 환경에서 서비스 계정 정보 로드 완료")
+                    
+                except ImportError as e:
+                    if error_handler:
+                        error_handler.handle_error(
+                            error=e,
+                            module="google_sheets.client",
+                            operation="connect_cloudtype_import",
+                            severity="CRITICAL",
+                            additional_context={"environment": ENVIRONMENT}
+                        )
+                    logger.error("클라우드타입 설정 모듈을 불러올 수 없습니다")
+                    return False
+                    
             else:
                 # 로컬 환경: JSON 파일 사용
                 service_account_file = self.service_account_file or os.getenv('SERVICE_ACCOUNT_FILE', 'config/life-coordinator-a8de30e91786.json')
-                credentials = Credentials.from_service_account_file(
-                    service_account_file, 
-                    scopes=self.scope
-                )
-                logger.info(f"로컬 환경에서 서비스 계정 파일을 사용합니다: {service_account_file}")
+                
+                if not os.path.exists(service_account_file):
+                    error_msg = f"서비스 계정 파일을 찾을 수 없습니다: {service_account_file}"
+                    if error_handler:
+                        error_handler.handle_error(
+                            error=FileNotFoundError(error_msg),
+                            module="google_sheets.client",
+                            operation="connect_local_file_check",
+                            severity="CRITICAL",
+                            additional_context={"file_path": service_account_file}
+                        )
+                    logger.error(error_msg)
+                    return False
+                
+                try:
+                    credentials = Credentials.from_service_account_file(
+                        service_account_file, 
+                        scopes=self.scope
+                    )
+                    logger.info(f"로컬 환경에서 서비스 계정 파일 로드 완료: {service_account_file}")
+                    
+                except Exception as cred_error:
+                    if error_handler:
+                        error_handler.handle_error(
+                            error=cred_error,
+                            module="google_sheets.client",
+                            operation="connect_local_credentials",
+                            severity="CRITICAL",
+                            additional_context={"file_path": service_account_file}
+                        )
+                    logger.error(f"서비스 계정 파일 로드 실패: {cred_error}")
+                    return False
             
             # gspread 클라이언트 생성
-            gc = gspread.authorize(credentials)
+            try:
+                gc = gspread.authorize(credentials)
+                logger.debug("gspread 클라이언트 인증 완료")
+            except Exception as auth_error:
+                if error_handler:
+                    error_handler.handle_error(
+                        error=auth_error,
+                        module="google_sheets.client",
+                        operation="connect_gspread_auth",
+                        severity="CRITICAL",
+                        additional_context={"scope": self.scope}
+                    )
+                logger.error(f"gspread 인증 실패: {auth_error}")
+                return False
             
             # 스프레드시트 문서 열기
-            self.document = gc.open_by_url(self.spreadsheet_url)
+            try:
+                self.document = gc.open_by_url(self.spreadsheet_url)
+                logger.debug(f"스프레드시트 문서 열기 완료: {self.document.title}")
+            except gspread.exceptions.SpreadsheetNotFound as e:
+                if error_handler:
+                    error_handler.handle_error(
+                        error=e,
+                        module="google_sheets.client",
+                        operation="connect_open_spreadsheet",
+                        severity="CRITICAL",
+                        additional_context={"spreadsheet_url": self.spreadsheet_url}
+                    )
+                logger.error(f"스프레드시트를 찾을 수 없습니다: {self.spreadsheet_url}")
+                return False
+                
+            except gspread.exceptions.APIError as e:
+                if error_handler:
+                    error_handler.handle_error(
+                        error=e,
+                        module="google_sheets.client",
+                        operation="connect_open_spreadsheet",
+                        severity="ERROR",
+                        additional_context={
+                            "spreadsheet_url": self.spreadsheet_url,
+                            "api_error_code": getattr(e, 'response', {}).get('status')
+                        },
+                        auto_recovery_attempted=True
+                    )
+                logger.error(f"구글 시트 API 오류: {e}")
+                return False
             
-            logger.info("구글 스프레드시트 연결 성공")
-            return True
+            # 3단계: 결과 검증
+            if not self.document:
+                error_msg = "스프레드시트 문서 객체가 생성되지 않았습니다"
+                if error_handler:
+                    error_handler.handle_error(
+                        error=RuntimeError(error_msg),
+                        module="google_sheets.client",
+                        operation="connect_validation",
+                        severity="CRITICAL"
+                    )
+                logger.error(error_msg)
+                return False
+            
+            # 워크시트 접근 테스트
+            try:
+                worksheets = self.document.worksheets()
+                logger.info(f"구글 스프레드시트 연결 성공: {len(worksheets)}개 시트 발견")
+                return True
+                
+            except Exception as ws_error:
+                if error_handler:
+                    error_handler.handle_error(
+                        error=ws_error,
+                        module="google_sheets.client",
+                        operation="connect_worksheet_test",
+                        severity="WARNING",
+                        additional_context={"document_title": self.document.title if self.document else None}
+                    )
+                logger.warning(f"워크시트 접근 테스트 실패: {ws_error}")
+                # 문서는 열렸지만 워크시트 접근에 문제가 있어도 True 반환
+                return True
+                
+        except PermissionError as e:
+            if error_handler:
+                error_handler.handle_error(
+                    error=e,
+                    module="google_sheets.client",
+                    operation="connect",
+                    severity="CRITICAL",
+                    additional_context={"spreadsheet_url": self.spreadsheet_url}
+                )
+            logger.error(f"구글 스프레드시트 접근 권한이 없습니다: {e}")
+            return False
             
         except Exception as e:
-            logger.error(f"구글 스프레드시트 연결 실패: {e}")
+            if error_handler:
+                error_handler.handle_error(
+                    error=e,
+                    module="google_sheets.client",
+                    operation="connect",
+                    severity="CRITICAL",
+                    additional_context={
+                        "spreadsheet_url": self.spreadsheet_url,
+                        "environment": ENVIRONMENT,
+                        "is_cloudtype": self.is_cloudtype
+                    }
+                )
+            logger.error(f"구글 스프레드시트 연결 중 예상치 못한 오류: {e}")
             return False
     
     def get_worksheet_data(self, sheet_name: str) -> Tuple[Optional[object], Optional[pd.DataFrame]]:

@@ -139,8 +139,26 @@ class PykrxStockDataClient:
             return df
             
         except Exception as e:
-            logger.error(f"주식 OHLCV 조회 실패 ({stock_code}): {e}")
+            # 포괄적 오류 처리 적용
+            from utils.error_handler import get_error_handler
+            error_handler = get_error_handler()
+            
             import traceback
+            if error_handler:
+                error_handler.handle_error(
+                    error=e,
+                    module="utils.stock_analyzer",
+                    operation="get_stock_ohlcv",
+                    severity="ERROR",
+                    related_stock=stock_code,
+                    additional_context={
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "retry_enabled": retry_with_prev_day
+                    }
+                )
+            
+            logger.error(f"주식 OHLCV 조회 실패 ({stock_code}): {e}")
             logger.debug(f"상세 오류:\n{traceback.format_exc()}")
             return None
     

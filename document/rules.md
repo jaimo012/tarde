@@ -114,6 +114,121 @@
 - **시간·금액 정확성**: 금액/수익률은 `Decimal`, 시간은 TZ-인식(`Asia/Seoul` 표준화).
 - **의존성 보안**: 버전 핀, `pip-audit`/`safety`/`bandit`/`dependabot`, 비밀스캔(`git-secrets`/`trufflehog`).
 
+### 4.2 포괄적 오류 기록 및 관리 (Comprehensive Error Handling)
+> **원칙**: "모든 실행 지점에서 발생 가능한 오류를 예측하여 기록하고 관리한다"
+
+#### 4.2.1 필수 오류 기록 지점 (Mandatory Error Recording Points)
+- **외부 API 호출**: DART API, Kiwoom API, pykrx, Google Sheets/Drive API
+- **파일 I/O 작업**: 로그 파일, 설정 파일, 임시 파일 읽기/쓰기
+- **데이터 파싱**: HTML/XML/JSON/CSV 파싱, 데이터 타입 변환
+- **네트워크 연결**: HTTP 요청, 소켓 연결, 타임아웃 처리
+- **데이터베이스/시트 작업**: 읽기/쓰기/업데이트/삭제 연산
+- **비즈니스 로직**: 투자 점수 계산, 매수/매도 조건 판단, 포지션 관리
+- **스케줄링**: 정기 실행, 시장 시간 체크, 휴장일 처리
+- **자원 관리**: 메모리 사용, 연결 풀, 임시 자원 정리
+
+#### 4.2.2 3단계 오류 처리 패턴 (3-Tier Error Handling Pattern)
+```python
+# 모든 함수에 다음 패턴 적용
+def function_name(params):
+    try:
+        # 1단계: 입력 검증 (빠른 실패)
+        if not validate_input(params):
+            raise ValueError("입력값 검증 실패")
+        
+        # 2단계: 핵심 로직 실행
+        result = core_logic()
+        
+        # 3단계: 결과 검증
+        if not validate_result(result):
+            raise RuntimeError("결과 검증 실패")
+            
+        return result
+        
+    except SpecificException as e:
+        # 구체적 예외: 명확한 원인과 해결책 제시
+        error_handler.handle_error(
+            error=e,
+            module=__name__,
+            operation="function_name",
+            severity="ERROR",
+            additional_context={"input": sanitize_for_log(params)}
+        )
+        return None  # 또는 기본값/대체값
+        
+    except Exception as e:
+        # 예상치 못한 예외: 상세 정보와 함께 CRITICAL로 기록
+        error_handler.handle_error(
+            error=e,
+            module=__name__,
+            operation="function_name", 
+            severity="CRITICAL",
+            additional_context={"input": sanitize_for_log(params)}
+        )
+        raise  # 시스템 전체에 영향을 줄 수 있는 경우
+```
+
+#### 4.2.3 오류 분류 및 심각도 (Error Classification & Severity)
+- **CRITICAL**: 시스템 전체 중단, 데이터 손실, 보안 침해 위험
+  - 예: 인증 실패, 설정 파일 손상, 메모리 부족, DB 연결 실패
+- **ERROR**: 기능 실패하지만 시스템 계속 동작 가능
+  - 예: API 호출 실패, 파일 읽기 실패, 데이터 파싱 오류
+- **WARNING**: 예상된 문제이나 주의 필요
+  - 예: 재시도 수행, 기본값 사용, 일부 데이터 누락
+
+#### 4.2.4 오류 기록 필수 정보 (Required Error Information)
+```python
+error_record = {
+    'timestamp': datetime.now(),           # 발생 시간 (KST)
+    'severity': 'ERROR',                   # 심각도
+    'module': 'dart_api.client',           # 발생 모듈
+    'function': 'fetch_disclosure',        # 발생 함수
+    'error_type': 'ConnectionTimeout',     # 예외 타입
+    'error_message': '...',                # 오류 메시지 (200자 제한)
+    'related_stock': '삼성전자(005930)',    # 관련 종목 (있는 경우)
+    'trading_status': '매수 진행중',        # 자동매매 상태
+    'position_info': '2종목 보유',         # 포지션 정보
+    'user_action': '재시도 필요',          # 사용자가 취해야 할 액션
+    'auto_recovery': True,                 # 자동 복구 시도 여부
+    'correlation_id': 'uuid...',           # 연관 작업 추적 ID
+    'environment': 'production',           # 실행 환경
+    'stack_trace': '...',                  # 스택 트레이스 (500자 제한)
+    'context_data': {                      # 추가 컨텍스트 (JSON)
+        'api_endpoint': '/api/list.json',
+        'request_params': {'corp_code': '***'},  # 민감정보 마스킹
+        'retry_count': 2
+    }
+}
+```
+
+#### 4.2.5 오류 알림 정책 (Error Notification Policy)
+- **즉시 슬랙 알림**: CRITICAL 오류, 연속 ERROR 3회 이상
+- **일일 요약 알림**: WARNING 오류 통계, 오류 패턴 분석
+- **무알림**: 예상된 WARNING (네트워크 재시도, 데이터 지연 등)
+- **오류 시트 기록**: 모든 ERROR/CRITICAL 오류 무조건 기록
+- **로그 파일**: 모든 수준 오류 상세 기록
+
+#### 4.2.6 자동 복구 전략 (Auto-Recovery Strategies)
+- **지수 백오프 재시도**: 네트워크 오류, API 일시 장애
+- **Circuit Breaker**: 연속 실패 시 일정 시간 차단 후 재시도
+- **Fallback 데이터**: pykrx 실패 시 이전 데이터 사용
+- **Graceful Degradation**: 핵심 기능 유지하며 부가 기능 비활성화
+- **Health Check**: 정기적 자가 진단 및 자동 복구 시도
+
+#### 4.2.7 오류 패턴 분석 (Error Pattern Analysis)
+- **시간대별 분석**: 특정 시간에 집중되는 오류 탐지
+- **모듈별 분석**: 취약한 모듈 식별 및 우선 개선
+- **종목별 분석**: 특정 종목에서만 발생하는 오류 분석  
+- **환경별 분석**: 로컬/클라우드 환경 차이로 인한 오류
+- **연관성 분석**: correlation_id로 연쇄 오류 추적
+
+#### 4.2.8 개발자 친화적 오류 정보 (Developer-Friendly Error Info)
+- **재현 가능한 정보**: 입력값, 환경 설정, 실행 시점
+- **해결 가이드**: 각 오류 타입별 구체적 해결 방법 제시
+- **관련 문서 링크**: API 문서, 트러블슈팅 가이드 자동 첨부
+- **코드 위치**: 파일명, 줄 번호, 함수명 명확히 기록
+- **성능 정보**: 실행 시간, 메모리 사용량, API 응답 시간
+
 ---
 
 ## 5) 데이터 소스 & 모듈 경계

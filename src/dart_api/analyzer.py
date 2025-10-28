@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 from loguru import logger
 
 from config.settings import REQUIRED_FIELDS
+from utils.error_handler import get_error_handler
 
 
 class ReportAnalyzer:
@@ -64,39 +65,174 @@ class ReportAnalyzer:
         
         logger.info("보고서 분석기가 초기화되었습니다.")
     
-    def analyze_report(self, html_content: str) -> Dict[str, Optional[str]]:
+    def analyze_report(self, html_content: str, rcept_no: str = None) -> Dict[str, Optional[str]]:
         """
         보고서 HTML 내용을 분석하여 계약 정보를 추출합니다.
         
         Args:
             html_content (str): 보고서 HTML 내용
+            rcept_no (str): 접수번호 (오류 추적용, 선택사항)
             
         Returns:
             Dict[str, Optional[str]]: 추출된 계약 정보
         """
+        error_handler = get_error_handler()
+        
+        # 1단계: 입력값 검증
         if not html_content:
-            logger.warning("분석할 보고서 내용이 없습니다.")
+            error_msg = "분석할 보고서 내용이 없습니다"
+            logger.warning(error_msg)
+            if error_handler:
+                error_handler.handle_error(
+                    error=ValueError(error_msg),
+                    module="dart_api.analyzer",
+                    operation="analyze_report",
+                    severity="WARNING",
+                    related_stock=f"접수번호:{rcept_no}" if rcept_no else "알 수 없음"
+                )
+            return {}
+        
+        if not isinstance(html_content, str):
+            error_msg = f"잘못된 HTML 내용 타입: {type(html_content)}"
+            logger.error(error_msg)
+            if error_handler:
+                error_handler.handle_error(
+                    error=TypeError(error_msg),
+                    module="dart_api.analyzer",
+                    operation="analyze_report", 
+                    severity="ERROR",
+                    related_stock=f"접수번호:{rcept_no}" if rcept_no else "알 수 없음",
+                    additional_context={"content_type": str(type(html_content))}
+                )
+            return {}
+        
+        # HTML 길이 검증
+        if len(html_content.strip()) < 100:
+            error_msg = f"HTML 내용이 너무 짧음: {len(html_content)} 문자"
+            logger.warning(error_msg)
+            if error_handler:
+                error_handler.handle_error(
+                    error=ValueError(error_msg),
+                    module="dart_api.analyzer",
+                    operation="analyze_report",
+                    severity="WARNING",
+                    related_stock=f"접수번호:{rcept_no}" if rcept_no else "알 수 없음",
+                    additional_context={"content_length": len(html_content)}
+                )
             return {}
         
         try:
+            # 2단계: 핵심 로직 실행
+            logger.debug(f"보고서 분석 시작: {len(html_content):,} 문자")
+            
             # BeautifulSoup으로 HTML 파싱
-            soup = BeautifulSoup(html_content, 'html.parser')
+            try:
+                soup = BeautifulSoup(html_content, 'html.parser')
+                if not soup or not soup.get_text(strip=True):
+                    raise ValueError("HTML 파싱 결과가 비어있음")
+            except Exception as parse_error:
+                if error_handler:
+                    error_handler.handle_error(
+                        error=parse_error,
+                        module="dart_api.analyzer",
+                        operation="analyze_report_parse",
+                        severity="ERROR",
+                        related_stock=f"접수번호:{rcept_no}" if rcept_no else "알 수 없음",
+                        additional_context={"content_preview": html_content[:200]}
+                    )
+                logger.error(f"HTML 파싱 실패: {parse_error}")
+                return {}
             
             # 각 필드별로 데이터 추출
             extracted_data = {}
+            extraction_stats = {"success": 0, "failed": 0, "total": len(self.header_patterns)}
+            
             for field_name, patterns in self.header_patterns.items():
-                value = self._find_value_with_fallbacks(soup, patterns)
-                extracted_data[field_name] = value
-                
-                if value:
-                    logger.debug(f"'{field_name}' 추출 성공: {value[:50]}...")
-                else:
-                    logger.debug(f"'{field_name}' 추출 실패")
+                try:
+                    value = self._find_value_with_fallbacks(soup, patterns)
+                    extracted_data[field_name] = value
+                    
+                    if value and value.strip():
+                        logger.debug(f"'{field_name}' 추출 성공: {value[:50]}...")
+                        extraction_stats["success"] += 1
+                    else:
+                        logger.debug(f"'{field_name}' 추출 실패")
+                        extraction_stats["failed"] += 1
+                        
+                except Exception as field_error:
+                    logger.warning(f"'{field_name}' 필드 추출 중 오류: {field_error}")
+                    extracted_data[field_name] = None
+                    extraction_stats["failed"] += 1
+                    
+                    if error_handler:
+                        error_handler.handle_error(
+                            error=field_error,
+                            module="dart_api.analyzer",
+                            operation="analyze_report_field_extraction",
+                            severity="WARNING",
+                            related_stock=f"접수번호:{rcept_no}" if rcept_no else "알 수 없음",
+                            additional_context={
+                                "field_name": field_name,
+                                "patterns_count": len(patterns) if patterns else 0
+                            }
+                        )
+            
+            # 3단계: 결과 검증
+            success_rate = extraction_stats["success"] / extraction_stats["total"] * 100
+            logger.info(f"보고서 분석 완료: {extraction_stats['success']}/{extraction_stats['total']} 필드 추출 성공 ({success_rate:.1f}%)")
+            
+            # 필수 필드 추출 실패 시 경고
+            missing_required = []
+            for required_field in REQUIRED_FIELDS:
+                if not extracted_data.get(required_field):
+                    missing_required.append(required_field)
+            
+            if missing_required:
+                error_msg = f"필수 필드 누락: {missing_required}"
+                logger.warning(error_msg)
+                if error_handler:
+                    error_handler.handle_error(
+                        error=ValueError(error_msg),
+                        module="dart_api.analyzer",
+                        operation="analyze_report_validation",
+                        severity="WARNING",
+                        related_stock=f"접수번호:{rcept_no}" if rcept_no else "알 수 없음",
+                        additional_context={
+                            "missing_fields": missing_required,
+                            "extracted_fields": list(extracted_data.keys()),
+                            "success_rate": success_rate
+                        }
+                    )
             
             return extracted_data
             
+        except MemoryError as e:
+            if error_handler:
+                error_handler.handle_error(
+                    error=e,
+                    module="dart_api.analyzer",
+                    operation="analyze_report",
+                    severity="CRITICAL",
+                    related_stock=f"접수번호:{rcept_no}" if rcept_no else "알 수 없음",
+                    additional_context={"content_size": len(html_content)}
+                )
+            logger.error(f"메모리 부족으로 보고서 분석 실패: {e}")
+            return {}
+            
         except Exception as e:
-            logger.error(f"보고서 분석 중 오류 발생: {e}")
+            if error_handler:
+                error_handler.handle_error(
+                    error=e,
+                    module="dart_api.analyzer",
+                    operation="analyze_report",
+                    severity="ERROR",
+                    related_stock=f"접수번호:{rcept_no}" if rcept_no else "알 수 없음",
+                    additional_context={
+                        "content_length": len(html_content),
+                        "content_preview": html_content[:300] if html_content else None
+                    }
+                )
+            logger.error(f"보고서 분석 중 예상치 못한 오류: {e}")
             return {}
     
     def _find_value_with_fallbacks(self, soup: BeautifulSoup, patterns: List[str]) -> Optional[str]:

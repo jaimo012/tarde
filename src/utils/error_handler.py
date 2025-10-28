@@ -6,6 +6,8 @@
 """
 
 import traceback
+import uuid
+import inspect
 from typing import Optional, Dict, Any
 from datetime import datetime
 from loguru import logger
@@ -37,8 +39,11 @@ class ErrorHandler:
         position_info: str = '없음',
         additional_context: Optional[Dict[str, Any]] = None,
         send_slack: bool = True,
-        log_to_sheet: bool = True
-    ) -> bool:
+        log_to_sheet: bool = True,
+        auto_recovery_attempted: bool = False,
+        correlation_id: Optional[str] = None,
+        function_name: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         오류를 처리하고 로깅, 시트 기록, 슬랙 알림을 수행합니다.
         
@@ -55,66 +60,128 @@ class ErrorHandler:
             log_to_sheet: 시트 기록 여부
             
         Returns:
-            bool: 처리 성공 여부
+            Dict[str, Any]: 오류 처리 결과 정보
         """
-        error_type = type(error).__name__
-        error_message = str(error)
-        stack_trace = traceback.format_exc()
-        
-        # 1. 로거에 기록
-        logger.error(f"🚨 [{severity}] {module} - {operation}")
-        logger.error(f"오류 유형: {error_type}")
-        logger.error(f"오류 메시지: {error_message}")
-        logger.debug(f"스택 트레이스:\n{stack_trace}")
-        
-        # 2. 시트에 기록
-        if log_to_sheet and self.sheets_client:
+        try:
+            # 기본 정보 추출
+            error_type = type(error).__name__
+            error_message = str(error)
+            stack_trace = traceback.format_exc()
+            
+            # correlation_id 생성 (없으면)
+            if not correlation_id:
+                correlation_id = str(uuid.uuid4())[:8]
+            
+            # 함수명 자동 감지 (없으면)
+            if not function_name:
+                try:
+                    frame = inspect.currentframe().f_back.f_back
+                    function_name = frame.f_code.co_name if frame else 'unknown'
+                except:
+                    function_name = 'unknown'
+            
+            # 환경 정보
             try:
-                error_log = {
-                    'timestamp': datetime.now(),
-                    'severity': severity,
-                    'module': module,
-                    'error_type': error_type,
-                    'error_message': error_message[:200],  # 200자 제한
-                    'related_stock': related_stock,
-                    'trading_status': trading_status,
-                    'position_info': position_info,
-                    'resolution_status': '미해결',
-                    'details': f"작업: {operation}\n{stack_trace[-500:]}" if len(stack_trace) > 500 else f"작업: {operation}\n{stack_trace}"
-                }
-                
-                self.sheets_client.log_error_to_sheet(error_log)
-                logger.info("✅ 오류 로그 시트 기록 완료")
-            except Exception as sheet_error:
-                logger.error(f"❌ 오류 로그 시트 기록 실패: {sheet_error}")
-        
-        # 3. 슬랙 알림 전송
-        if send_slack and self.slack_notifier:
-            try:
-                error_details = {
-                    "⚠️ 오류 유형": error_type,
-                    "📝 오류 메시지": error_message,
-                    "📍 발생 위치": f"{module} - {operation}",
-                    "📊 관련 종목": related_stock,
-                    "🤖 자동매매 상태": trading_status,
-                    "💼 보유 종목": position_info
-                }
-                
-                # 추가 컨텍스트가 있으면 추가
-                if additional_context:
-                    for key, value in additional_context.items():
-                        error_details[key] = value
-                
-                self.slack_notifier.send_critical_error(
-                    error_title=f"{severity}: {module} 오류 발생",
-                    error_details=error_details,
-                    stack_trace=stack_trace
-                )
-                logger.info("✅ 슬랙 오류 알림 전송 완료")
-            except Exception as slack_error:
-                logger.error(f"❌ 슬랙 알림 전송 실패: {slack_error}")
-        
-        return True
+                from config.settings import ENVIRONMENT
+                environment = ENVIRONMENT
+            except:
+                environment = 'unknown'
+            
+            # 1. 구조화된 로거 기록
+            logger.error(f"🚨 [{severity}] {module}.{function_name} - {operation}")
+            logger.error(f"📋 상관ID: {correlation_id}")
+            logger.error(f"🔍 오류 유형: {error_type}")
+            logger.error(f"📝 오류 메시지: {error_message}")
+            if auto_recovery_attempted:
+                logger.info(f"🔄 자동 복구 시도함")
+            logger.debug(f"📍 스택 트레이스:\n{stack_trace}")
+            
+            # 2. 시트에 기록
+            sheet_success = False
+            if log_to_sheet and self.sheets_client:
+                try:
+                    error_log = {
+                        'timestamp': datetime.now(),
+                        'severity': severity,
+                        'module': f"{module}.{function_name}",
+                        'error_type': error_type,
+                        'error_message': error_message[:200],  # 200자 제한
+                        'related_stock': related_stock,
+                        'trading_status': trading_status,
+                        'position_info': position_info,
+                        'resolution_status': '자동복구시도' if auto_recovery_attempted else '미해결',
+                        'details': (f"작업: {operation}\n상관ID: {correlation_id}\n"
+                                  f"환경: {environment}\n{stack_trace[-500:] if len(stack_trace) > 500 else stack_trace}")
+                    }
+                    
+                    sheet_success = self.sheets_client.log_error_to_sheet(error_log)
+                    if sheet_success:
+                        logger.info("✅ 오류 로그 시트 기록 완료")
+                    else:
+                        logger.error("❌ 오류 로그 시트 기록 실패")
+                except Exception as sheet_error:
+                    logger.error(f"❌ 오류 로그 시트 기록 중 예외: {sheet_error}")
+            
+            # 3. 슬랙 알림 전송
+            slack_success = False
+            if send_slack and self.slack_notifier and severity in ['CRITICAL', 'ERROR']:
+                try:
+                    stack_trace_short = stack_trace[-1000:] if len(stack_trace) > 1000 else stack_trace
+                    
+                    error_details = {
+                        "⚠️ 심각도": severity,
+                        "🆔 상관ID": correlation_id,
+                        "📍 발생 위치": f"{module}.{function_name}",
+                        "🔧 작업": operation,
+                        "🔍 오류 유형": error_type,
+                        "📝 오류 메시지": error_message[:400],
+                        "🎯 관련 종목": related_stock,
+                        "🤖 자동매매 상태": trading_status,
+                        "📊 포지션 정보": position_info,
+                        "🔄 자동복구": "시도함" if auto_recovery_attempted else "미시도",
+                        "🌍 환경": environment
+                    }
+                    
+                    # 추가 컨텍스트 정보 포함 (필드 수 제한)
+                    if additional_context:
+                        context_count = 0
+                        for key, value in additional_context.items():
+                            if context_count >= 5:  # 최대 5개 추가 필드
+                                break
+                            sanitized_value = str(value)[:80] if value else 'None'
+                            error_details[f"📋 {key}"] = sanitized_value
+                            context_count += 1
+                    
+                    self.slack_notifier.send_critical_error(
+                        error_title=f"🚨 [{severity}] {operation} 오류",
+                        error_details=error_details,
+                        stack_trace=stack_trace_short
+                    )
+                    slack_success = True
+                    logger.info("✅ 슬랙 오류 알림 전송 완료")
+                except Exception as slack_error:
+                    logger.error(f"❌ 슬랙 알림 전송 중 예외: {slack_error}")
+            
+            # 4. 결과 반환
+            return {
+                'success': True,
+                'correlation_id': correlation_id,
+                'error_type': error_type,
+                'severity': severity,
+                'sheet_logged': sheet_success,
+                'slack_sent': slack_success,
+                'auto_recovery_attempted': auto_recovery_attempted
+            }
+            
+        except Exception as handler_error:
+            # 오류 처리기 자체에서 오류가 발생한 경우
+            logger.critical(f"💥 ErrorHandler 자체 오류: {handler_error}")
+            logger.critical(f"원본 오류: {error}")
+            return {
+                'success': False,
+                'error': str(handler_error),
+                'original_error': str(error)
+            }
     
     def log_operation(
         self,
@@ -306,6 +373,65 @@ class ErrorHandler:
             if error:
                 log_message += f"\n  └─ 오류: {error}"
             logger.error(log_message)
+
+    def _get_recommended_action(self, error_type: str, severity: str) -> str:
+        """오류 유형과 심각도에 따른 권장 조치를 반환합니다."""
+        action_map = {
+            'ConnectionError': '네트워크 연결 확인 후 재시도',
+            'TimeoutError': 'API 응답 시간 초과, 잠시 후 재시도',
+            'AuthenticationError': 'API 키 및 인증 정보 확인',
+            'KeyError': '데이터 스키마 확인 및 필드명 검증',
+            'ValueError': '입력값 형식 및 범위 확인',
+            'FileNotFoundError': '파일 경로 및 권한 확인',
+            'PermissionError': '파일/디렉터리 권한 확인',
+            'ImportError': '라이브러리 설치 확인 (pip install)',
+            'AttributeError': '객체 속성 및 메서드 존재 여부 확인',
+            'IndexError': '배열/리스트 인덱스 범위 확인',
+            'TypeError': '데이터 타입 및 함수 시그니처 확인'
+        }
+        
+        if severity == 'CRITICAL':
+            return f"{action_map.get(error_type, '시스템 관리자에게 즉시 문의')} (긴급)"
+        else:
+            return action_map.get(error_type, '로그 분석 후 적절한 조치 수행')
+
+    def _sanitize_context(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """민감정보를 마스킹하고 컨텍스트 데이터를 정제합니다."""
+        sanitized = {}
+        sensitive_keys = {'password', 'key', 'token', 'secret', 'auth', 'credential'}
+        
+        for key, value in context.items():
+            if any(sensitive in key.lower() for sensitive in sensitive_keys):
+                # 민감정보 마스킹
+                if isinstance(value, str) and len(value) > 4:
+                    sanitized[key] = value[:2] + '*' * (len(value) - 4) + value[-2:]
+                else:
+                    sanitized[key] = '***'
+            else:
+                # 일반 정보는 길이 제한
+                sanitized[key] = str(value)[:200] if value else 'None'
+        
+        return sanitized
+
+    def _sanitize_for_display(self, value: str, max_length: int = 100) -> str:
+        """디스플레이용 텍스트를 정제합니다."""
+        if not value:
+            return 'None'
+        
+        # 민감정보 패턴 마스킹
+        import re
+        
+        # 이메일 마스킹
+        value = re.sub(r'(\w+)@(\w+)', r'\1***@\2', value)
+        
+        # 전화번호 마스킹
+        value = re.sub(r'(\d{3})-?(\d{4})-?(\d{4})', r'\1-***-\3', value)
+        
+        # 길이 제한
+        if len(value) > max_length:
+            return value[:max_length-3] + '...'
+        
+        return value
 
 
 # 전역 오류 처리기 인스턴스 (초기화는 main.py에서 수행)
