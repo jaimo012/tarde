@@ -140,7 +140,7 @@ class PykrxStockDataClient:
             
         except Exception as e:
             # 포괄적 오류 처리 적용
-            from utils.error_handler import get_error_handler
+            from src.utils.error_handler import get_error_handler
             error_handler = get_error_handler()
             
             import traceback

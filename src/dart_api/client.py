@@ -15,7 +15,7 @@ from typing import List, Dict, Optional
 from loguru import logger
 
 from config.settings import DART_API_KEY, DART_API_CONFIG, REPORT_SEARCH_CONFIG
-from utils.error_handler import get_error_handler
+from src.utils.error_handler import get_error_handler
 
 
 class DartApiClient:

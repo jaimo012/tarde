@@ -18,7 +18,7 @@ from config.settings import (
     SHEET_COLUMNS,
     ENVIRONMENT
 )
-from utils.error_handler import get_error_handler
+from src.utils.error_handler import get_error_handler
 
 
 class GoogleSheetsClient:

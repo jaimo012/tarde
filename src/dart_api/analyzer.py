@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 from loguru import logger
 
 from config.settings import REQUIRED_FIELDS
-from utils.error_handler import get_error_handler
+from src.utils.error_handler import get_error_handler
 
 
 class ReportAnalyzer:
