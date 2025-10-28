@@ -315,15 +315,120 @@ class StockChartGenerator:
         if not MATPLOTLIB_AVAILABLE:
             logger.warning("matplotlib을 사용할 수 없어 차트를 생성할 수 없습니다.")
         
-        # 한글 폰트 설정 (Windows 환경)
+        # 한글 폰트 설정 및 검증
+        self.korean_font_available = self._setup_korean_font()
+        
+        # 다국어 레이블 매핑
+        self.labels = self._get_chart_labels()
+    
+    def _setup_korean_font(self) -> bool:
+        """한글 폰트를 설정하고 사용 가능한지 확인합니다."""
+        if not MATPLOTLIB_AVAILABLE:
+            return False
+            
         try:
-            if os.name == 'nt':  # Windows
-                plt.rcParams['font.family'] = 'Malgun Gothic'
-            else:
-                plt.rcParams['font.family'] = 'DejaVu Sans'
+            # 한글 폰트 우선순위 목록
+            korean_fonts = [
+                'Noto Sans CJK KR',      # Google Noto 폰트 (Linux/Docker 권장)
+                'NanumGothic',           # 나눔고딕
+                'Malgun Gothic',         # 맑은 고딕 (Windows)
+                'AppleGothic',           # 애플고딕 (macOS)
+                'Nanum Gothic',          # 나눔고딕 (다른 표기)
+                'NanumBarunGothic',      # 나눔바른고딕
+                'DejaVu Sans'            # 대체 폰트 (한글 미지원)
+            ]
+            
+            # 시스템에 설치된 폰트 목록 확인
+            available_fonts = set([f.name for f in fm.fontManager.ttflist])
+            
+            logger.info(f"시스템 설치 폰트 수: {len(available_fonts)}개")
+            logger.debug(f"한글 폰트 후보: {korean_fonts}")
+            
+            # 우선순위에 따라 사용 가능한 한글 폰트 찾기
+            selected_font = None
+            for font_name in korean_fonts:
+                if font_name in available_fonts:
+                    selected_font = font_name
+                    logger.info(f"✅ 사용 가능한 폰트 발견: {font_name}")
+                    break
+                else:
+                    logger.debug(f"❌ 폰트 없음: {font_name}")
+            
+            # 폰트 설정 적용
+            if selected_font:
+                plt.rcParams['font.family'] = selected_font
+                plt.rcParams['axes.unicode_minus'] = False
+                
+                # 한글 지원 여부 테스트
+                is_korean_supported = self._test_korean_font_support(selected_font)
+                
+                if is_korean_supported:
+                    logger.info(f"🎨 한글 폰트 설정 완료: {selected_font}")
+                    return True
+                else:
+                    logger.warning(f"⚠️ {selected_font} 폰트는 한글을 완전히 지원하지 않습니다.")
+            
+            # 한글 폰트를 찾지 못한 경우 기본 설정
+            logger.warning("🔤 한글 폰트를 찾지 못했습니다. 영어 레이블을 사용합니다.")
+            plt.rcParams['font.family'] = 'DejaVu Sans'
             plt.rcParams['axes.unicode_minus'] = False
+            return False
+            
         except Exception as e:
-            logger.warning(f"폰트 설정 실패: {e}")
+            logger.error(f"폰트 설정 중 오류 발생: {e}")
+            # 기본 설정으로 대체
+            plt.rcParams['font.family'] = 'DejaVu Sans'
+            plt.rcParams['axes.unicode_minus'] = False
+            return False
+    
+    def _test_korean_font_support(self, font_name: str) -> bool:
+        """지정된 폰트가 한글을 지원하는지 테스트합니다."""
+        try:
+            # 간단한 한글 문자로 테스트
+            test_chars = ['가', '나', '다', '라']
+            font_prop = fm.FontProperties(family=font_name)
+            
+            for char in test_chars:
+                try:
+                    # 폰트에서 문자 지원 여부 확인 (간접적 방법)
+                    font_file = fm.findfont(font_prop)
+                    if font_file and 'DejaVu' not in font_file:
+                        return True
+                except:
+                    continue
+            
+            return False
+        except Exception:
+            return False
+    
+    def _get_chart_labels(self) -> Dict[str, str]:
+        """차트에 사용할 레이블을 언어별로 반환합니다."""
+        if self.korean_font_available:
+            # 한글 레이블
+            return {
+                'date': '날짜',
+                'price': '가격 (원)',
+                'current_price': '현재가',
+                'bull_candle': '양봉',
+                'bear_candle': '음봉',
+                'ma5': '5일 이평선',
+                'ma20': '20일 이평선',
+                'price_range': '현재가 ±3%',
+                'recent_days': '최근'
+            }
+        else:
+            # 영어 레이블 (한글 폰트가 없을 때)
+            return {
+                'date': 'Date',
+                'price': 'Price (KRW)',
+                'current_price': 'Current Price',
+                'bull_candle': 'Bull Candle',
+                'bear_candle': 'Bear Candle',
+                'ma5': '5-day MA',
+                'ma20': '20-day MA',
+                'price_range': 'Current ±3%',
+                'recent_days': 'Recent'
+            }
     
     def create_candlestick_chart(self, stock_code: str, stock_name: str, 
                                   df: object, days_to_show: int = 10) -> Optional[str]:
@@ -417,20 +522,21 @@ class StockChartGenerator:
             # Y축 범위 설정
             ax.set_ylim(y_min, y_max)
             
-            # 차트 꾸미기
-            ax.set_title(f'{stock_name}({stock_code}) - 최근 {days_to_show}일', 
-                         fontsize=16, fontweight='bold', pad=20)
-            ax.set_xlabel('날짜', fontsize=12)
-            ax.set_ylabel('가격 (원)', fontsize=12)
+            # 차트 꾸미기 (다국어 지원)
+            title_text = f'{stock_name}({stock_code}) - {self.labels["recent_days"]} {days_to_show}days' if not self.korean_font_available else f'{stock_name}({stock_code}) - 최근 {days_to_show}일'
+            ax.set_title(title_text, fontsize=16, fontweight='bold', pad=20)
+            ax.set_xlabel(self.labels['date'], fontsize=12)
+            ax.set_ylabel(self.labels['price'], fontsize=12)
             
-            # 범례 (색상 정보 포함)
+            # 범례 (색상 정보 포함) - 다국어 지원
+            price_range_label = f'{self.labels["price_range"]} ({current_price_low:,.0f}~{current_price_high:,.0f}KRW)' if not self.korean_font_available else f'현재가 ±3% ({current_price_low:,.0f}~{current_price_high:,.0f}원)'
+            
             legend_elements = [
-                mpatches.Patch(facecolor=COLOR_BULL, label='양봉'),
-                mpatches.Patch(facecolor=COLOR_BEAR, label='음봉'),
-                plt.Line2D([0], [0], color=COLOR_MA5, linewidth=2, label='5일 이평선'),
-                plt.Line2D([0], [0], color=COLOR_MA20, linewidth=2, label='20일 이평선'),
-                mpatches.Patch(facecolor='yellow', alpha=0.2, 
-                               label=f'현재가 ±3% ({current_price_low:,.0f}~{current_price_high:,.0f}원)')
+                mpatches.Patch(facecolor=COLOR_BULL, label=self.labels['bull_candle']),
+                mpatches.Patch(facecolor=COLOR_BEAR, label=self.labels['bear_candle']),
+                plt.Line2D([0], [0], color=COLOR_MA5, linewidth=2, label=self.labels['ma5']),
+                plt.Line2D([0], [0], color=COLOR_MA20, linewidth=2, label=self.labels['ma20']),
+                mpatches.Patch(facecolor='yellow', alpha=0.2, label=price_range_label)
             ]
             ax.legend(handles=legend_elements, loc='best', fontsize=9)
             
@@ -453,9 +559,13 @@ class StockChartGenerator:
             # 현재가 위치 (마지막 종가)
             current_pos = len(df_display) - 1
             
-            # 종가 최대값 표시 (현재가 대비 %)
+            # 종가 최대값 표시 (현재가 대비 %) - 다국어 지원
             close_high_pct = ((close_high - current_price) / current_price) * 100
-            close_high_text = f'{close_high:,.0f}원 (+{close_high_pct:.1f}%)'
+            if self.korean_font_available:
+                close_high_text = f'{close_high:,.0f}원 (+{close_high_pct:.1f}%)'
+            else:
+                close_high_text = f'{close_high:,.0f}KRW (+{close_high_pct:.1f}%)'
+            
             ax.annotate(close_high_text, 
                         xy=(close_high_pos, close_high),
                         xytext=(10, 10), textcoords='offset points',
@@ -464,9 +574,13 @@ class StockChartGenerator:
                         bbox=dict(boxstyle='round,pad=0.5', facecolor='white', edgecolor='red', alpha=0.8),
                         arrowprops=dict(arrowstyle='->', color='red', lw=1.5))
             
-            # 종가 최소값 표시 (현재가 대비 %)
+            # 종가 최소값 표시 (현재가 대비 %) - 다국어 지원
             close_low_pct = ((close_low - current_price) / current_price) * 100
-            close_low_text = f'{close_low:,.0f}원 ({close_low_pct:.1f}%)'
+            if self.korean_font_available:
+                close_low_text = f'{close_low:,.0f}원 ({close_low_pct:.1f}%)'
+            else:
+                close_low_text = f'{close_low:,.0f}KRW ({close_low_pct:.1f}%)'
+            
             ax.annotate(close_low_text,
                         xy=(close_low_pos, close_low),
                         xytext=(10, -20), textcoords='offset points',
@@ -475,8 +589,12 @@ class StockChartGenerator:
                         bbox=dict(boxstyle='round,pad=0.5', facecolor='white', edgecolor='blue', alpha=0.8),
                         arrowprops=dict(arrowstyle='->', color='blue', lw=1.5))
             
-            # 현재가 표시 (마지막 종가)
-            current_text = f'현재가: {current_price:,.0f}원'
+            # 현재가 표시 (마지막 종가) - 다국어 지원
+            if self.korean_font_available:
+                current_text = f'현재가: {current_price:,.0f}원'
+            else:
+                current_text = f'{self.labels["current_price"]}: {current_price:,.0f}KRW'
+            
             ax.annotate(current_text,
                         xy=(current_pos, current_price),
                         xytext=(10, 10), textcoords='offset points',

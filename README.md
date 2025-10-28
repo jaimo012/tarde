@@ -433,7 +433,28 @@ grep "삼성전자" logs/dart_scraper.log
    - 한글 파일명 문제: `git config --global core.quotepath false`로 해결
    - 멀티라인 커밋 메시지 문제: `git_helper.py` 사용 권장
 
+7. **한글 폰트 관련 경고 (v4.3.2에서 해결) ✅**
+   - **증상**: `UserWarning: Glyph XXXXX missing from font(s) DejaVu Sans` 경고 메시지 반복 발생
+   - **원인**: Docker/Linux 환경에서 DejaVu Sans 폰트가 한글 글리프를 지원하지 않음
+   - **해결**: 스마트 폰트 시스템으로 자동 대응 (v4.3.2 업데이트)
+     - 한글 폰트 자동 탐지: Noto Sans CJK KR, NanumGothic, Malgun Gothic 등 우선순위별 검색
+     - 폰트 지원 검증: 실제 한글 렌더링 테스트로 완전성 확인  
+     - 우아한 대체: 한글 폰트가 없으면 영어 레이블로 자동 전환
+   - **기능**: 차트가 깨지지 않고 안정적으로 생성됨 (한글 → 영어 자동 대체)
+
 ## 📋 개발 이력
+
+### v4.3.2 (2025-10-28) - 한글 폰트 문제 완전 해결 🎨
+- 🔤 **스마트 폰트 시스템**: Docker/Linux 환경의 한글 폰트 부족 문제 완전 해결
+  - **자동 폰트 탐지**: Noto Sans CJK KR, NanumGothic, Malgun Gothic 등 우선순위별 검색
+  - **폰트 검증 로직**: matplotlib font_manager를 활용한 시스템 폰트 상태 확인
+  - **한글 지원 테스트**: 실제 한글 문자 렌더링 가능 여부 자동 검증
+- 🌐 **다국어 차트 지원**: 한글 폰트가 없을 때 영어 레이블로 우아하게 대체
+  - 차트 제목, 축 레이블, 범례, 주석 모두 자동 언어 전환
+  - "현재가: 12,500원" → "Current Price: 12,500KRW" 자동 변환
+- 🚫 **경고 메시지 제거**: `Glyph XXXXX missing from font(s) DejaVu Sans` 경고 완전 해결
+- 📊 **차트 안정성 향상**: 폰트 문제로 인한 차트 생성 실패 방지
+- 💡 **개발자 친화적**: 폰트 설정 과정과 결과를 상세한 로그로 제공
 
 ### v4.3.1 (2025-10-21) - 고품질 차트 시스템 및 Google Drive 연동 🎨
 - 📊 **차트 품질 대폭 개선**: 사용자 지정 색상, 레이아웃, 주석 시스템 적용
