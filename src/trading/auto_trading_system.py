@@ -198,10 +198,55 @@ class AutoTradingSystem:
             logger.info("4단계: 매수 전략 실행...")
             buy_result = self.trading_strategy.execute_buy_strategy(stock_code, stock_name)
             
+            # 오류 정보가 있는 경우 상세 처리
+            if buy_result and 'error_info' in buy_result:
+                error_info = buy_result['error_info']
+                
+                logger.error("❌ 매수 실행 실패")
+                logger.error(f"   📍 실패 단계: {error_info['step']}")
+                logger.error(f"   🔍 오류 유형: {error_info['error_type']}")
+                logger.error(f"   📝 오류 메시지: {error_info['error_message']}")
+                
+                # 상세 슬랙 알림 전송
+                error_details = {
+                    "📊 대상 종목": f"{stock_name}({stock_code})",
+                    "📍 실패 단계": error_info['step'],
+                    "🔍 오류 유형": error_info['error_type'],
+                    "📝 오류 메시지": error_info['error_message']
+                }
+                
+                # 가능한 원인 추가
+                if 'possible_causes' in error_info and error_info['possible_causes']:
+                    causes_text = "\n".join([f"• {cause}" for cause in error_info['possible_causes']])
+                    error_details["💡 가능한 원인"] = causes_text
+                
+                # 해결방법 추가
+                if 'resolution' in error_info and error_info['resolution']:
+                    error_details["🛠️ 해결방법"] = error_info['resolution']
+                
+                # 주문번호가 있는 경우 추가 (체결 확인 실패 시)
+                if 'order_number' in error_info:
+                    error_details["📋 주문번호"] = error_info['order_number']
+                    error_details["🔍 확인사항"] = "키움증권 HTS에서 주문 상태를 직접 확인하세요"
+                
+                # 추가 컨텍스트 정보
+                if 'available_amount' in error_info:
+                    error_details["💰 매수 가능 금액"] = error_info['available_amount']
+                if 'current_price' in error_info:
+                    error_details["📈 현재가"] = error_info['current_price']
+                
+                self.slack_notifier.send_critical_error(
+                    error_title=f"💥 매수 실행 실패: {stock_name}({stock_code})",
+                    error_details=error_details,
+                    stack_trace=error_info.get('stack_trace', None)
+                )
+                
+                return False
+            
             if not buy_result:
-                logger.error("매수 실행 실패")
+                logger.error("매수 실행 실패: 알 수 없는 오류")
                 self.slack_notifier.send_system_notification(
-                    f"❌ 매수 실행 실패: {stock_name}({stock_code})",
+                    f"❌ 매수 실행 실패: {stock_name}({stock_code}) (알 수 없는 오류)",
                     "error"
                 )
                 return False

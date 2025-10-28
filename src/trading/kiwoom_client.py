@@ -123,6 +123,125 @@ class KiwoomAPIClient:
             return "****"
         return data[:2] + "*" * (len(data) - 4) + data[-2:]
     
+    def _analyze_kiwoom_error(self, return_code: int, return_msg: str) -> Optional[Dict[str, str]]:
+        """
+        키움증권 API 오류 코드를 분석하여 원인과 해결방법을 제공합니다.
+        
+        Args:
+            return_code: 키움증권 API 응답 코드
+            return_msg: 키움증권 API 응답 메시지
+            
+        Returns:
+            Optional[Dict]: 오류 분석 결과 (원인 불명 시 None)
+                - cause: 오류 원인
+                - resolution: 해결방법
+        """
+        # 키움증권 API 공통 오류 코드 분석
+        error_map = {
+            # 인증 관련 오류
+            -1: {
+                'cause': 'API 인증 실패 (토큰 만료 또는 잘못된 토큰)',
+                'resolution': 'authenticate() 메서드를 호출하여 토큰을 재발급받으세요'
+            },
+            -2: {
+                'cause': 'API 권한 없음 (승인되지 않은 API 키)',
+                'resolution': '키움증권에서 API 서비스 승인을 받았는지 확인하세요'
+            },
+            -3: {
+                'cause': 'IP 주소 미등록',
+                'resolution': '키움증권 API 관리 페이지에서 서버 IP를 화이트리스트에 등록하세요'
+            },
+            
+            # 주문 관련 오류  
+            -10: {
+                'cause': '계좌번호 오류',
+                'resolution': 'KIWOOM_ACCOUNT_NUMBER 환경변수의 계좌번호를 확인하세요'
+            },
+            -11: {
+                'cause': '주문 가능 시간 외',
+                'resolution': '거래시간 (09:00~15:30) 내에 주문하세요'
+            },
+            -12: {
+                'cause': '주문 수량 오류 (0주 또는 음수)',
+                'resolution': '올바른 주문 수량을 입력하세요'
+            },
+            -13: {
+                'cause': '주문 가격 오류',
+                'resolution': '올바른 주문 가격을 입력하세요'
+            },
+            -14: {
+                'cause': '매수 가능 금액 부족',
+                'resolution': '예수금을 확인하고 충분한 자금이 있는지 확인하세요'
+            },
+            -15: {
+                'cause': '매도 가능 수량 부족',
+                'resolution': '보유 종목의 매도 가능 수량을 확인하세요'
+            },
+            
+            # 종목 관련 오류
+            -20: {
+                'cause': '종목코드 오류 또는 존재하지 않는 종목',
+                'resolution': '6자리 숫자 종목코드가 올바른지 확인하세요'
+            },
+            -21: {
+                'cause': '거래정지 종목',
+                'resolution': '해당 종목의 거래정지 상태를 확인하세요'
+            },
+            -22: {
+                'cause': '상장폐지 종목',
+                'resolution': '다른 종목으로 거래하세요'
+            },
+            
+            # 시스템 관련 오류
+            -30: {
+                'cause': 'API 호출 한도 초과',
+                'resolution': '잠시 후 다시 시도하거나 호출 빈도를 줄이세요'
+            },
+            -31: {
+                'cause': '키움증권 서버 점검 중',
+                'resolution': '키움증권 서버 점검 시간을 확인하고 나중에 다시 시도하세요'
+            },
+            -32: {
+                'cause': '키움증권 서버 오류',
+                'resolution': '키움증권 고객센터(1544-9000)에 문의하세요'
+            }
+        }
+        
+        # return_code 기반 분석
+        if return_code in error_map:
+            return error_map[return_code]
+        
+        # return_msg 기반 분석 (키워드 매칭)
+        if return_msg:
+            msg_lower = return_msg.lower()
+            
+            if 'token' in msg_lower or 'auth' in msg_lower or '인증' in return_msg:
+                return {
+                    'cause': 'API 인증 관련 오류',
+                    'resolution': 'authenticate() 메서드로 토큰을 재발급받으세요'
+                }
+            elif 'balance' in msg_lower or '잔고' in return_msg or '부족' in return_msg:
+                return {
+                    'cause': '예수금 또는 잔고 부족',
+                    'resolution': '계좌의 예수금과 보유 종목을 확인하세요'
+                }
+            elif 'code' in msg_lower or '종목' in return_msg:
+                return {
+                    'cause': '종목코드 관련 오류',
+                    'resolution': '종목코드가 올바른지 확인하세요 (6자리 숫자)'
+                }
+            elif 'time' in msg_lower or '시간' in return_msg:
+                return {
+                    'cause': '거래시간 관련 오류',
+                    'resolution': '거래시간 (09:00~15:30) 내에 주문하세요'
+                }
+        
+        # 알 수 없는 오류
+        return {
+            'cause': f'키움증권 API 오류 (코드: {return_code})',
+            'resolution': '키움증권 API 문서를 확인하거나 고객센터에 문의하세요'
+        }
+    
     def _get_headers(self, api_id: str, cont_yn: str = 'N', next_key: str = '') -> Dict[str, str]:
         """
         키움증권 API 요청 헤더를 생성합니다.
@@ -542,15 +661,26 @@ class KiwoomAPIClient:
                 result = response.json()
                 
                 # 키움증권 API 응답 검증
-                if result.get('return_code') != 0:
-                    error_msg = f"🚨 주문 실패!\n"
-                    error_msg += f"종목: {stock_code}\n"
-                    error_msg += f"{side} {order_type}\n"
-                    error_msg += f"수량: {quantity}주\n"
-                    error_msg += f"가격: {price if price else '시장가'}원\n"
-                    error_msg += f"return_code: {result.get('return_code')}\n"
-                    error_msg += f"return_msg: {result.get('return_msg')}"
-                    logger.error(error_msg)
+                return_code = result.get('return_code')
+                return_msg = result.get('return_msg', '')
+                
+                if return_code != 0:
+                    # 키움증권 API 오류 상세 로깅
+                    logger.error("🚨 키움증권 API 주문 실패!")
+                    logger.error(f"   📊 종목: {stock_code}")
+                    logger.error(f"   📝 주문: {side} {order_type}")
+                    logger.error(f"   📦 수량: {quantity}주")
+                    logger.error(f"   💰 가격: {price if price else '시장가'}원")
+                    logger.error(f"   🔢 응답코드: {return_code}")
+                    logger.error(f"   📋 응답메시지: {return_msg}")
+                    
+                    # 키움증권 오류 코드별 상세 분석
+                    error_analysis = self._analyze_kiwoom_error(return_code, return_msg)
+                    if error_analysis:
+                        logger.error("💡 오류 분석:")
+                        logger.error(f"   🔍 원인: {error_analysis['cause']}")
+                        logger.error(f"   🛠️ 해결방법: {error_analysis['resolution']}")
+                    
                     return None
                 
                 # 주문 성공

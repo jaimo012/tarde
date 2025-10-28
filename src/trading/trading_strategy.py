@@ -150,12 +150,13 @@ class TradingStrategy:
         Returns:
             Optional[Dict]: 매수 결과 (실패 시 None)
                 - order_number: 주문번호
-                - stock_code: 종목코드
+                - stock_code: 종목코드  
                 - stock_name: 종목명
                 - quantity: 체결수량
                 - executed_price: 체결가격 (Decimal)
                 - executed_amount: 체결금액 (Decimal)
                 - buy_time: 매수시각
+                - error_info: 실패 시 오류 상세 정보
         """
         try:
             logger.info("=" * 60)
@@ -163,25 +164,60 @@ class TradingStrategy:
             logger.info("=" * 60)
             
             # 1. 시장가 매수 주문
+            logger.info("🚀 1단계: 시장가 매수 주문 실행...")
             order_result = self.order_mgr.place_market_buy_order(stock_code, stock_name)
+            
+            # 오류 정보가 있는 경우 처리
+            if order_result and 'error_info' in order_result:
+                error_info = order_result['error_info']
+                logger.error(f"❌ 매수 주문 실패: {error_info['error_message']}")
+                logger.error(f"📍 실패 단계: {error_info['step']}")
+                logger.error(f"🔍 오류 유형: {error_info['error_type']}")
+                
+                if 'possible_causes' in error_info:
+                    logger.error("💡 가능한 원인:")
+                    for cause in error_info['possible_causes']:
+                        logger.error(f"   - {cause}")
+                
+                if 'resolution' in error_info:
+                    logger.error(f"🛠️ 해결방법: {error_info['resolution']}")
+                
+                return {'error_info': error_info}
+            
             if not order_result:
-                logger.error("매수 주문 실패")
-                return None
+                error_info = {
+                    'step': '매수 주문',
+                    'error_type': '알 수 없는 오류',
+                    'error_message': '매수 주문이 실패했지만 구체적인 오류 정보가 제공되지 않았습니다',
+                    'possible_causes': [
+                        '시스템 내부 오류',
+                        '예상치 못한 예외 발생'
+                    ],
+                    'resolution': '시스템 로그를 확인하여 상세한 오류 원인을 파악하세요'
+                }
+                logger.error("❌ 매수 주문 실패: 알 수 없는 오류")
+                return {'error_info': error_info}
             
             order_number = order_result['order_number']
-            logger.info(f"매수 주문 완료 - 주문번호: {order_number}")
+            logger.info(f"✅ 1단계 성공: 매수 주문 완료 (주문번호: {order_number})")
             
             # 2. 체결 확인 (최대 10초 대기)
+            logger.info("⏳ 2단계: 매수 체결 확인 중...")
             import time
+            
             for attempt in range(5):
                 time.sleep(2)
+                logger.debug(f"체결 확인 시도 {attempt+1}/5...")
                 
                 execution = self.order_mgr.check_order_execution(order_number, stock_code)
                 if execution and execution['executed']:
-                    logger.info(f"✅ 매수 체결 완료: {execution['executed_quantity']}주 @ {execution['executed_price']:,}원")
+                    logger.info(f"✅ 2단계 성공: 매수 체결 완료")
+                    logger.info(f"   📊 체결 수량: {execution['executed_quantity']}주")
+                    logger.info(f"   💰 체결 가격: {execution['executed_price']:,}원")
+                    logger.info(f"   💵 체결 금액: {execution['executed_amount']:,}원")
                     
                     # 3. 익절 매도 주문 설정 (+3%)
-                    logger.info("익절 매도 주문 설정 중...")
+                    logger.info("📈 3단계: 익절 매도 주문 설정 중...")
                     sell_result = self.order_mgr.place_limit_sell_order(
                         stock_code=stock_code,
                         stock_name=stock_name,
@@ -191,9 +227,13 @@ class TradingStrategy:
                     )
                     
                     if sell_result:
-                        logger.info(f"✅ 익절 매도 주문 설정 완료: {sell_result['sell_price']:,}원")
+                        logger.info(f"✅ 3단계 성공: 익절 매도 주문 설정 완료")
+                        logger.info(f"   🎯 목표가: {sell_result['sell_price']:,}원 (+{self.PROFIT_TARGET*100:.1f}%)")
                     else:
-                        logger.warning("⚠️ 익절 매도 주문 설정 실패 (나중에 다시 시도)")
+                        logger.warning("⚠️ 3단계 경고: 익절 매도 주문 설정 실패 (나중에 재시도)")
+                    
+                    logger.info("🎉 매수 전략 실행 완료!")
+                    logger.info("=" * 60)
                     
                     return {
                         'order_number': order_number,
@@ -206,14 +246,47 @@ class TradingStrategy:
                         'sell_order_number': sell_result['order_number'] if sell_result else None
                     }
                 
-                logger.debug(f"체결 대기 중... (시도 {attempt+1}/5)")
+                logger.debug(f"   ⏳ 체결 대기 중... (2초 후 재시도)")
             
-            logger.warning("⚠️ 체결 확인 실패 (나중에 다시 확인 필요)")
-            return None
+            # 체결 확인 실패
+            error_info = {
+                'step': '매수 체결 확인',
+                'error_type': '체결 확인 타임아웃',
+                'error_message': '매수 주문은 성공했지만 10초 내에 체결을 확인할 수 없었습니다',
+                'order_number': order_number,
+                'possible_causes': [
+                    '시장가 주문이지만 호가가 없어 체결 지연',
+                    '거래량 부족으로 인한 체결 지연',
+                    '키움증권 체결 조회 API 오류',
+                    '네트워크 지연으로 인한 조회 실패'
+                ],
+                'resolution': '키움증권 HTS에서 주문 상태를 직접 확인하거나 잠시 후 다시 시도하세요'
+            }
+            
+            logger.warning("⚠️ 2단계 타임아웃: 체결 확인 실패")
+            logger.warning(f"📋 주문번호 {order_number}는 키움증권 HTS에서 직접 확인하세요")
+            return {'error_info': error_info}
             
         except Exception as e:
-            logger.error(f"매수 전략 실행 중 오류 발생: {e}")
-            return None
+            import traceback
+            stack_trace = traceback.format_exc()
+            
+            error_info = {
+                'step': '매수 전략 실행',
+                'error_type': type(e).__name__,
+                'error_message': str(e),
+                'stack_trace': stack_trace,
+                'possible_causes': [
+                    '예상치 못한 시스템 오류',
+                    '메모리 부족',
+                    '라이브러리 호환성 문제'
+                ],
+                'resolution': '스택 트레이스를 확인하고 시스템을 재시작하세요'
+            }
+            
+            logger.error(f"💥 매수 전략 실행 중 예외 발생: {e}")
+            logger.error(f"📋 상세 스택 트레이스:\n{stack_trace}")
+            return {'error_info': error_info}
     
     def execute_position_management(self, buy_date: datetime) -> Optional[Dict]:
         """

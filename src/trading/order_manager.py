@@ -103,45 +103,104 @@ class OrderManager:
                 - stock_name: 종목명
                 - quantity: 주문수량
                 - order_time: 주문시각
+                - error_info: 실패 시 오류 상세 정보
         """
+        error_details = {}
+        
         try:
             logger.info(f"🔵 시장가 매수 주문 시작: {stock_name}({stock_code})")
+            logger.info("=" * 50)
             
             # 1. 예수금 조회
+            logger.info("1️⃣ 단계: 예수금 조회 중...")
             balance = self.kiwoom.get_balance()
             if not balance:
-                logger.error("예수금 조회 실패")
-                return None
+                error_details = {
+                    'step': '예수금 조회',
+                    'error_type': 'API 호출 실패',
+                    'error_message': '키움증권 계좌 잔고 조회에 실패했습니다',
+                    'possible_causes': [
+                        '키움증권 API 인증 토큰 만료',
+                        '계좌번호 오류',
+                        '키움증권 서버 일시적 장애',
+                        '네트워크 연결 문제'
+                    ],
+                    'resolution': '키움증권 인증 상태를 확인하고 재시도하세요'
+                }
+                logger.error(f"❌ 1단계 실패: {error_details['error_message']}")
+                return {'error_info': error_details}
             
             available_amount = balance['available_amount']
+            logger.info(f"✅ 1단계 성공: 매수 가능 금액 {available_amount:,}원")
             
             # 최소 예수금 체크 (1만원)
             if available_amount < Decimal('10000'):
-                logger.error(f"매수 가능 금액 부족: {available_amount:,}원 (최소 10,000원 필요)")
-                return None
-            
-            logger.info(f"매수 가능 금액: {available_amount:,}원")
+                error_details = {
+                    'step': '예수금 검증',
+                    'error_type': '잔액 부족',
+                    'error_message': f'매수 가능 금액이 부족합니다 ({available_amount:,}원)',
+                    'required_amount': '10,000원',
+                    'current_amount': f'{available_amount:,}원',
+                    'possible_causes': [
+                        '예수금 부족',
+                        '미체결 주문으로 인한 가용 자금 부족',
+                        '당일 거래로 인한 일시적 자금 동결'
+                    ],
+                    'resolution': '예수금을 입금하거나 기존 주문을 취소하세요'
+                }
+                logger.error(f"❌ 1단계 검증 실패: {error_details['error_message']}")
+                return {'error_info': error_details}
             
             # 2. 현재가 조회
+            logger.info("2️⃣ 단계: 현재가 조회 중...")
             price_info = self.kiwoom.get_current_price(stock_code)
             if not price_info:
-                logger.error("현재가 조회 실패")
-                return None
+                error_details = {
+                    'step': '현재가 조회',
+                    'error_type': 'pykrx 데이터 조회 실패',
+                    'error_message': f'종목 {stock_code}의 현재가 조회에 실패했습니다',
+                    'possible_causes': [
+                        '종목코드 오류 (6자리 숫자 확인)',
+                        '거래정지 종목',
+                        '상장폐지 종목',
+                        'pykrx 서버 일시적 장애',
+                        '장마감 후 당일 데이터 미제공'
+                    ],
+                    'resolution': '종목코드를 확인하고 거래시간 중에 재시도하세요'
+                }
+                logger.error(f"❌ 2단계 실패: {error_details['error_message']}")
+                return {'error_info': error_details}
             
             current_price = price_info['current_price']
-            logger.info(f"현재가: {current_price:,}원")
+            logger.info(f"✅ 2단계 성공: 현재가 {current_price:,}원")
             
             # 3. 매수 수량 계산
+            logger.info("3️⃣ 단계: 매수 수량 계산 중...")
             quantity = self._calculate_buy_quantity(available_amount, current_price)
             
             if quantity <= 0:
-                logger.error("매수 가능 수량이 0입니다")
-                return None
+                error_details = {
+                    'step': '매수 수량 계산',
+                    'error_type': '수량 계산 오류',
+                    'error_message': '매수 가능 수량이 0입니다',
+                    'available_amount': f'{available_amount:,}원',
+                    'current_price': f'{current_price:,}원',
+                    'calculated_quantity': quantity,
+                    'possible_causes': [
+                        '주가가 너무 높아 1주도 살 수 없음',
+                        '수수료를 고려한 실제 매수 가능 금액 부족'
+                    ],
+                    'resolution': f'최소 {current_price * (1 + float(self.COMMISSION_RATE)):,.0f}원 이상의 예수금이 필요합니다'
+                }
+                logger.error(f"❌ 3단계 실패: {error_details['error_message']}")
+                return {'error_info': error_details}
             
-            logger.info(f"매수 수량: {quantity}주")
+            logger.info(f"✅ 3단계 성공: 매수 수량 {quantity}주 계산 완료")
             
             # 4. 시장가 매수 주문 실행
-            logger.warning(f"⚠️ 실제 매수 주문 실행 중... {stock_name}({stock_code}) {quantity}주")
+            logger.info("4️⃣ 단계: 키움증권 API 매수 주문 실행 중...")
+            logger.warning(f"⚠️ 실제 매수 주문 실행: {stock_name}({stock_code}) {quantity}주")
+            
             order_result = self.kiwoom.place_order(
                 stock_code=stock_code,
                 order_type='buy_market',
@@ -149,10 +208,31 @@ class OrderManager:
             )
             
             if not order_result:
-                logger.error("매수 주문 실패")
-                return None
+                error_details = {
+                    'step': '키움증권 API 주문',
+                    'error_type': 'API 주문 실패',
+                    'error_message': '키움증권 API 매수 주문 실행에 실패했습니다',
+                    'order_details': {
+                        'stock_code': stock_code,
+                        'order_type': 'buy_market',
+                        'quantity': quantity
+                    },
+                    'possible_causes': [
+                        '키움증권 API 인증 토큰 만료',
+                        '주문 파라미터 오류',
+                        '키움증권 서버 오류 (return_code != 0)',
+                        '거래시간 외 주문 시도',
+                        '종목별 주문 제한 초과'
+                    ],
+                    'resolution': 'API 로그를 확인하여 키움증권 return_code 및 return_msg를 검토하세요'
+                }
+                logger.error(f"❌ 4단계 실패: {error_details['error_message']}")
+                return {'error_info': error_details}
             
-            logger.info(f"✅ 매수 주문 성공 - 주문번호: {order_result['order_number']}")
+            logger.info(f"✅ 4단계 성공: 매수 주문 완료")
+            logger.info(f"📋 주문번호: {order_result['order_number']}")
+            logger.info(f"🕐 주문시각: {order_result['order_time']}")
+            logger.info("=" * 50)
             
             return {
                 'order_number': order_result['order_number'],
@@ -163,8 +243,26 @@ class OrderManager:
             }
             
         except Exception as e:
-            logger.error(f"매수 주문 중 오류 발생: {e}")
-            return None
+            import traceback
+            stack_trace = traceback.format_exc()
+            
+            error_details = {
+                'step': '매수 주문 처리',
+                'error_type': type(e).__name__,
+                'error_message': str(e),
+                'stack_trace': stack_trace,
+                'possible_causes': [
+                    '예상치 못한 시스템 오류',
+                    '네트워크 연결 문제',
+                    '메모리 부족',
+                    '키움증권 API 라이브러리 오류'
+                ],
+                'resolution': '스택 트레이스를 확인하고 시스템 관리자에게 문의하세요'
+            }
+            
+            logger.error(f"💥 매수 주문 중 예외 발생: {e}")
+            logger.error(f"📋 상세 스택 트레이스:\n{stack_trace}")
+            return {'error_info': error_details}
     
     def place_limit_sell_order(self, stock_code: str, stock_name: str, quantity: int, 
                                buy_price: Decimal, profit_rate: Decimal) -> Optional[Dict]:
